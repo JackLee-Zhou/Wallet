@@ -20,6 +20,8 @@ func Start(isSwag bool, configPath string) {
 	}
 
 	var engines []*engine.ConCurrentEngine
+
+	// 读取配置 会启动很多监听 可同时监听 20 和 原生
 	for _, engineConfig := range conf.Engines {
 		eth, err := engine.NewEngine(engineConfig)
 		if err != nil {
@@ -53,6 +55,21 @@ func Start(isSwag bool, configPath string) {
 		auth.POST("/collection", Collection)
 		auth.GET("/getTransactionReceipt", GetTransactionReceipt)
 	}
+
+	// TODO 发起一笔交易
+	server.POST("/transaction", Transaction)
+
+	// 添加新币
+	server.POST("/addNewCoin", AddNewCoin)
+
+	// 获取实时的 gas 费用 链上状态
+	server.POST("/getLinkStatus", GetLinkStatus)
+	// 获取账户的余额信息
+	server.POST("/getBalance", GetBalance)
+	// 添加网络
+	server.POST("/addNetWork", AddNetWork)
+	// 获取钱包基础信息
+	server.GET("/getWalletInfo", GetWalletInfo)
 
 	if isSwag {
 		swagHandler := ginSwagger.WrapHandler(swaggerFiles.Handler)

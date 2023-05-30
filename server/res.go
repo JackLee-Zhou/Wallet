@@ -44,3 +44,19 @@ type CollectionRes struct {
 type TransactionReceiptRes struct {
 	Status int `json:"status"` // 交易状态（0：未成功，1：已成功）
 }
+
+// LinkStatus 链上状态 gas gasPrice
+type LinkStatus struct {
+	GasPrice string `json:"gasPrice"` // gasPrice
+}
+
+type GetBalanceRes struct {
+	Balance string `json:"balance"`
+}
+
+// SendTransactionRes 执行交易回执
+type SendTransactionRes struct {
+	FromHex string `json:"fromHex"`
+	SignHax string `json:"signHax"`
+	Nonce   uint64 `json:"nonce"`
+}

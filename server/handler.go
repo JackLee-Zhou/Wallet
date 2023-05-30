@@ -5,6 +5,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lmxdawn/wallet/engine"
 	"math/big"
+	"strconv"
 )
 
 // CreateWallet ...
@@ -199,4 +200,107 @@ func GetTransactionReceipt(c *gin.Context) {
 	}
 
 	APIResponse(c, nil, res)
+}
+
+// AddNewCoin 添加新币
+func AddNewCoin(c *gin.Context) {
+	var newCoin AddNewCoinReq
+	if err := c.ShouldBindJSON(&newCoin); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+}
+
+// Transaction 发起一笔交易
+func Transaction(c *gin.Context) {
+	var sT SendTransaction
+	var res SendTransactionRes
+	if err := c.ShouldBindJSON(&sT); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	v, ok := c.Get(sT.Protocol + sT.CoinName)
+	if !ok {
+		HandleValidatorError(c, ErrNotData)
+		return
+	}
+	currentEngine := v.(*engine.ConCurrentEngine)
+	num, err := strconv.Atoi(sT.Num)
+	if err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	// TODO 根据地址 数据库中查询获取到 privateKey
+	get, err := currentEngine.DB.Get(currentEngine.Config.WalletPrefix + sT.From)
+	if err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	// 后端签名
+	// 这里 返回的仅是放到了交易池里面等到被执行，并没有实际的被真正的执行 还是处于 pending 状态
+	fromHex, signHex, nonce, err := currentEngine.Worker.Transfer(get, sT.To, big.NewInt(int64(num)), 0)
+	if err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	res.FromHex = fromHex
+	res.SignHax = signHex
+	res.Nonce = nonce
+	APIResponse(c, nil, res)
+}
+
+// GetLinkStatus 获取实时的链上状态
+func GetLinkStatus(c *gin.Context) {
+	var res LinkStatus
+	var linkStatus GetLinkStatusReq
+	if err := c.ShouldBindJSON(&linkStatus); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	v, ok := c.Get(linkStatus.Rpc)
+	if !ok {
+		HandleValidatorError(c, ErrNotData)
+		return
+	}
+	currentEngine := v.(*engine.ConCurrentEngine)
+	price, err := currentEngine.Worker.GetGasPrice()
+	if err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	res.GasPrice = price
+	APIResponse(c, nil, res)
+}
+
+// GetBalance 获取账户的余额信息
+func GetBalance(c *gin.Context) {
+	var balanceReq GetBalanceReq
+	if err := c.ShouldBindJSON(&balanceReq); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	v, ok := c.Get(balanceReq.Protocol + balanceReq.CoinName)
+	if !ok {
+		APIResponse(c, ErrEngine, nil)
+		return
+	}
+	currentEngine := v.(*engine.ConCurrentEngine)
+	// 代币是 20 币 直接使用20 协议中的 balanceOf
+	balance, err := currentEngine.Worker.GetBalance(balanceReq.UserAddress)
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+	res := GetBalanceRes{Balance: balance.String()}
+	APIResponse(c, nil, res)
+}
+
+// AddNetWork 添加网络
+func AddNetWork(c *gin.Context) {
+
+}
+
+// GetWalletInfo 获取钱包基础信息
+func GetWalletInfo(c *gin.Context) {
+
 }

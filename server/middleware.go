@@ -25,7 +25,9 @@ func SetEngine(engines ...*engine.ConCurrentEngine) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		for _, currentEngine := range engines {
+			// 跨请求取值 方便在其他地方使用
 			c.Set(currentEngine.Protocol+currentEngine.CoinName, currentEngine)
+			c.Set(currentEngine.Config.Rpc, currentEngine)
 		}
 	}
 

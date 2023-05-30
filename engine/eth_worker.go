@@ -21,7 +21,18 @@ type EthWorker struct {
 	http                   *ethclient.Client
 	token                  string // 代币合约地址，为空表示主币
 	tokenTransferEventHash common.Hash
-	tokenAbi               abi.ABI // 合约的abi
+	tokenAbi               abi.ABI     // 合约的abi
+	Pending                chan string // 待执行的交易
+}
+
+// GetGasPrice 获取最新的燃料价格
+func (e *EthWorker) GetGasPrice() (string, error) {
+	// 能这样做 ?
+	price, err := e.http.SuggestGasPrice(context.Background())
+	if err != nil {
+		return "", err
+	}
+	return price.String(), nil
 }
 
 func NewEthWorker(confirms uint64, contract string, url string) (*EthWorker, error) {
@@ -44,6 +55,7 @@ func NewEthWorker(confirms uint64, contract string, url string) (*EthWorker, err
 		http:                   http,
 		tokenTransferEventHash: tokenTransferEventHash,
 		tokenAbi:               tokenAbi,
+		Pending:                make(chan string, 64),
 	}, nil
 }
 
@@ -87,6 +99,8 @@ func (e *EthWorker) GetTransactionReceipt(transaction *types.Transaction) error 
 
 // GetTransaction 获取交易信息
 func (e *EthWorker) GetTransaction(num uint64) ([]types.Transaction, uint64, error) {
+
+	// 获取的是最新的区块
 	nowBlockNumber, err := e.GetNowBlockNum()
 	if err != nil {
 		return nil, num, err
@@ -296,7 +310,8 @@ func (e *EthWorker) Transfer(privateKeyStr string, toAddress string, value *big.
 }
 
 // sendTransaction 创建并发送交易
-func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string, toAddress string, value *big.Int, nonce uint64, data []byte) (string, string, uint64, error) {
+func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string,
+	toAddress string, value *big.Int, nonce uint64, data []byte) (string, string, uint64, error) {
 
 	privateKey, err := crypto.HexToECDSA(privateKeyStr)
 	if err != nil {
@@ -351,6 +366,7 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 		return "", "", 0, err
 	}
 
+	// 签名
 	signTx, err := ethTypes.SignTx(tx, ethTypes.NewEIP155Signer(chainID), privateKey)
 	if err != nil {
 		return "", "", 0, err
@@ -361,6 +377,8 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 		return "", "", 0, err
 	}
 
+	// TODO 打入管道中  createReceiptWorker 中去处理监听交易是否成功
+	e.Pending <- tx.Hash().String()
 	return fromAddress.Hex(), signTx.Hash().Hex(), nonce, nil
 }
 
