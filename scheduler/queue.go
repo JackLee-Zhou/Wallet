@@ -80,15 +80,18 @@ func (q *QueueScheduler) ReceiptRun() {
 			var activateR types.Transaction
 			var activateRW chan types.Transaction
 			if len(rQ) > 0 && len(rWQ) > 0 {
+				// 只取头部
 				activateR = rQ[0]
 				activateRW = rWQ[0]
 			}
 			select {
+			//  TODO 重写 这个啥意思 ？
 			case r := <-q.receipt:
 				rQ = append(rQ, r)
 			case rw := <-q.receiptWorker:
 				rWQ = append(rWQ, rw)
 			case activateRW <- activateR:
+				// 这是在删除头部元素
 				rQ = rQ[1:]
 				rWQ = rWQ[1:]
 			}

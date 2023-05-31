@@ -71,6 +71,9 @@ func Start(isSwag bool, configPath string) {
 	// 获取钱包基础信息
 	server.GET("/getWalletInfo", GetWalletInfo)
 
+	// 获取账户的活动信息
+	server.GET("/getActivity", GetActivity)
+
 	if isSwag {
 		swagHandler := ginSwagger.WrapHandler(swaggerFiles.Handler)
 		server.GET("/swagger/*any", swagHandler)

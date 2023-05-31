@@ -84,19 +84,23 @@ func (c *ConCurrentEngine) blockLoop() {
 
 	// 批量创建区块worker
 	blockWorkerOut := make(chan types.Transaction)
+
+	// 这里是在不断的读取区块
 	c.createBlockWorker(blockWorkerOut)
 
 	// 批量创建交易worker
-	for i := uint64(0); i < c.Config.ReceiptCount; i++ {
-		c.createReceiptWorker()
-	}
+	//for i := uint64(0); i < c.Config.ReceiptCount; i++ {
+	c.createReceiptWorker()
+	//}
 
 	c.scheduler.BlockSubmit(blockNumber)
 
 	go func() {
 		for {
+			// 不断从区块中 读取其中的所有交易
 			transaction := <-blockWorkerOut
 			//log.Info().Msgf("交易：%v", transaction)
+			// 这里提交之后 ReceiptWorker 中会去读取
 			c.scheduler.ReceiptSubmit(transaction)
 		}
 	}()
@@ -138,12 +142,9 @@ func (c *ConCurrentEngine) createBlockWorker(out chan types.Transaction) {
 			c.scheduler.BlockWorkerReady(in)
 			num := <-in
 			log.Info().Msgf("%v，监听区块：%d", c.Config.CoinName, num)
+			// 读取了区块中的交易
 			transactions, blockNum, err := c.Worker.GetTransaction(num)
 			if err != nil || blockNum == num {
-				if err != nil {
-					log.Info().Msgf("GetTransaction err is %s ", err.Error())
-					continue
-				}
 				log.Info().Msgf("等待%d秒，当前已是最新区块", c.Config.BlockAfterTime)
 				<-time.After(time.Duration(c.Config.BlockAfterTime) * time.Second)
 				c.scheduler.BlockSubmit(num)
@@ -164,64 +165,40 @@ func (c *ConCurrentEngine) createBlockWorker(out chan types.Transaction) {
 
 // createReceiptWorker 创建获取区块信息的工作
 func (c *ConCurrentEngine) createReceiptWorker() {
+	// 好像每次返回的是一个新的
+	// 返回的 receipt 其实就是 c.scheduler.ReceiptSubmit(transaction) 中每个区块传入的  transaction submit 一个 这边就会读取一个
 	in := c.scheduler.ReceiptWorkerChan()
+	eWorker := c.Worker.(*EthWorker)
 	go func() {
 		for {
-			c.scheduler.ReceiptWorkerReady(in)
-			transaction := <-in
-			err := c.Worker.GetTransactionReceipt(&transaction)
-			if err != nil {
-				log.Info().Msgf("等待%d秒，收据信息无效, err: %v", c.Config.ReceiptAfterTime, err)
-				<-time.After(time.Duration(c.Config.ReceiptAfterTime) * time.Second)
-				c.scheduler.ReceiptSubmit(transaction)
-				continue
-			}
-			// TODO 在这里比对数据库中需要监听的交易 Hash
-			eWorker := c.Worker.(*EthWorker)
-
-			// 检测这里 若里面有存储的数据 则开始根据Hash查最新的区块 看其中有没有交易成功
 			select {
 			case pendingHash := <-eWorker.Pending:
+				log.Info().Msgf("Find Transaction %s ", pendingHash)
+				// 好像没用 ?
+				c.scheduler.ReceiptWorkerReady(in)
+				// 这里的 in 是怎么读出数据的 ?
+				transaction := <-in
+				// 查询交易的情况
+				err := c.Worker.GetTransactionReceipt(&transaction)
+				if err != nil {
+					log.Info().Msgf("等待%d秒，收据信息无效, err: %v", c.Config.ReceiptAfterTime, err)
+					<-time.After(time.Duration(c.Config.ReceiptAfterTime) * time.Second)
+					c.scheduler.ReceiptSubmit(transaction)
+				}
+				// TODO 在这里比对数据库中需要监听的交易 Hash
+				// 检测这里 若里面有存储的数据 则开始根据Hash查最新的区块 看其中有没有交易成功
+
 				if transaction.Hash == pendingHash {
 					if transaction.Status != 1 {
 						log.Error().Msgf("交易失败：%v", transaction.Hash)
 						// TODO 发出通知
-						break
 					} else {
+						log.Info().Msgf("交易成功: %v", transaction.Hash)
+						// TODO 将交易信息存储在中心化的服务器 方便后续的查询
 
 					}
 				}
-			}
-
-			//log.Info().Msgf("交易完成：%v", transaction.Hash)
-
-			// 判断是否存在
-			if ok, err := c.DB.Has(c.Config.HashPrefix + transaction.Hash); err == nil && ok {
-				log.Info().Msgf("监听到提现事件，提现地址：%v，提现哈希：%v", transaction.To, transaction.Hash)
-				orderId, err := c.DB.Get(c.Config.HashPrefix + transaction.Hash)
-				if err != nil {
-					log.Error().Msgf("未查询到订单：%v, %v", transaction.Hash, err)
-					// 重新提交
-					c.scheduler.ReceiptSubmit(transaction)
-					continue
-				}
-				err = c.http.WithdrawSuccess(transaction.Hash, transaction.Status, orderId, transaction.To, transaction.Value.Int64())
-				if err != nil {
-					log.Error().Msgf("提现回调通知失败：%v, %v", transaction.Hash, err)
-					// 重新提交
-					c.scheduler.ReceiptSubmit(transaction)
-					continue
-				}
-				_ = c.DB.Delete(transaction.Hash)
-			} else if ok, err := c.DB.Has(c.Config.WalletPrefix + transaction.To); err == nil && ok {
-				log.Info().Msgf("监听到充值事件，充值地址：%v，充值哈希：%v", transaction.To, transaction.Hash)
-				err = c.http.RechargeSuccess(transaction.Hash, transaction.Status, transaction.To, transaction.Value.Int64())
-				if err != nil {
-					log.Error().Msgf("充值回调通知失败：%v, %v", transaction.Hash, err)
-					// 重新提交
-					c.scheduler.ReceiptSubmit(transaction)
-					continue
-				}
+				log.Info().Msgf("交易完成：%v", transaction.Hash)
 			}
 		}
 	}()

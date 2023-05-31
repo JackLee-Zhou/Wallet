@@ -211,6 +211,31 @@ func AddNewCoin(c *gin.Context) {
 	}
 }
 
+// GetActivity 获取钱包活动信息 交易记录
+func GetActivity(c *gin.Context) {
+	var walletActivity GetWalletActivity
+	res := WalletActivityRes{}
+	if err := c.ShouldBindJSON(&walletActivity); err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+
+	v, ok := c.Get(walletActivity.Protocol + walletActivity.CoinName)
+	if !ok {
+		HandleValidatorError(c, ErrNotData)
+		return
+	}
+	currentEngine := v.(*engine.ConCurrentEngine)
+	worker := currentEngine.Worker.(*engine.EthWorker)
+	for _, v := range worker.TransHistory {
+		temp := v
+		res.History = append(res.History, temp)
+	}
+	res.UserAddress = walletActivity.UserAddress
+	APIResponse(c, nil, res)
+	return
+}
+
 // Transaction 发起一笔交易
 func Transaction(c *gin.Context) {
 	var sT SendTransaction
@@ -227,20 +252,20 @@ func Transaction(c *gin.Context) {
 	currentEngine := v.(*engine.ConCurrentEngine)
 	num, err := strconv.Atoi(sT.Num)
 	if err != nil {
-		HandleValidatorError(c, err)
+		APIResponse(c, err, nil)
 		return
 	}
 	// TODO 根据地址 数据库中查询获取到 privateKey
 	get, err := currentEngine.DB.Get(currentEngine.Config.WalletPrefix + sT.From)
 	if err != nil {
-		HandleValidatorError(c, err)
+		APIResponse(c, err, nil)
 		return
 	}
 	// 后端签名
 	// 这里 返回的仅是放到了交易池里面等到被执行，并没有实际的被真正的执行 还是处于 pending 状态
 	fromHex, signHex, nonce, err := currentEngine.Worker.Transfer(get, sT.To, big.NewInt(int64(num)), 0)
 	if err != nil {
-		HandleValidatorError(c, err)
+		APIResponse(c, err, nil)
 		return
 	}
 	res.FromHex = fromHex

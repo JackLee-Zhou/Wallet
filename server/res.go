@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/lmxdawn/wallet/types"
 	"net/http"
 )
 
@@ -59,4 +60,9 @@ type SendTransactionRes struct {
 	FromHex string `json:"fromHex"`
 	SignHax string `json:"signHax"`
 	Nonce   uint64 `json:"nonce"`
+}
+
+type WalletActivityRes struct {
+	UserAddress string `json:"userAddress"`
+	History     []*types.Transaction
 }

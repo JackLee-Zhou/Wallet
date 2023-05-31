@@ -14,6 +14,7 @@ import (
 	"github.com/lmxdawn/wallet/types"
 	"math/big"
 	"strings"
+	"sync"
 )
 
 type EthWorker struct {
@@ -23,6 +24,8 @@ type EthWorker struct {
 	tokenTransferEventHash common.Hash
 	tokenAbi               abi.ABI     // 合约的abi
 	Pending                chan string // 待执行的交易
+	nonceLock              sync.Mutex
+	TransHistory           map[string]*types.Transaction // 交易历史记录
 }
 
 // GetGasPrice 获取最新的燃料价格
@@ -55,7 +58,8 @@ func NewEthWorker(confirms uint64, contract string, url string) (*EthWorker, err
 		http:                   http,
 		tokenTransferEventHash: tokenTransferEventHash,
 		tokenAbi:               tokenAbi,
-		Pending:                make(chan string, 64),
+		Pending:                make(chan string, 64), // 大小
+		TransHistory:           make(map[string]*types.Transaction),
 	}, nil
 }
 
@@ -326,15 +330,23 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 
 	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
 	if nonce <= 0 {
+		// 解决 nonce 竞争问题
+		e.nonceLock.Lock()
+		defer e.nonceLock.Unlock()
 		nonce, err = e.http.PendingNonceAt(context.Background(), fromAddress)
 		if err != nil {
 			return "", "", 0, err
 		}
+
 	}
 
 	var gasLimit uint64
-	gasLimit = uint64(8000000) // in units
+	gasLimit = uint64(21000) // in units
 	gasPrice, err := e.http.SuggestGasPrice(context.Background())
+	if err != nil {
+		return "", "", 0, err
+	}
+	gasTip, err := e.http.SuggestGasTipCap(context.Background())
 	if err != nil {
 		return "", "", 0, err
 	}
@@ -350,14 +362,24 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 		toAddressHex = &contractAddressHex
 	}
 
-	txData := &ethTypes.LegacyTx{
-		Nonce:    nonce,
-		To:       toAddressHex,
-		Value:    value,
-		Gas:      gasLimit,
-		GasPrice: gasPrice.Add(gasPrice, big.NewInt(100000000)),
-		Data:     data,
+	//b, err := e.http.BlockByNumber(context.Background(), nil)
+	//if err != nil {
+	//	return "", "", 0, err
+	//}
+	//
+	//gasPrice = gasPrice.Add(gasPrice, b.BaseFee())
+	txData := &ethTypes.DynamicFeeTx{
+		Nonce: nonce,
+		To:    toAddressHex,
+		Value: value,
+		Gas:   gasLimit,
+		//GasPrice: gasPrice.Add(gasPrice, big.NewInt(100000000)),
+		GasFeeCap: gasPrice,
+		GasTipCap: gasTip,
+		Data:      data,
 	}
+
+	//ethTypes.DynamicFeeTx{}
 
 	tx := ethTypes.NewTx(txData)
 
@@ -367,7 +389,7 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 	}
 
 	// 签名
-	signTx, err := ethTypes.SignTx(tx, ethTypes.NewEIP155Signer(chainID), privateKey)
+	signTx, err := ethTypes.SignTx(tx, ethTypes.LatestSignerForChainID(chainID), privateKey)
 	if err != nil {
 		return "", "", 0, err
 	}
@@ -378,6 +400,7 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 	}
 
 	// TODO 打入管道中  createReceiptWorker 中去处理监听交易是否成功
+
 	e.Pending <- tx.Hash().String()
 	return fromAddress.Hex(), signTx.Hash().Hex(), nonce, nil
 }

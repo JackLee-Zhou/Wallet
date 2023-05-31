@@ -50,8 +50,15 @@ type AddNewCoinReq struct {
 type GetBalanceReq struct {
 	Protocol    string `json:"protocol" binding:"required"`    // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
 	UserAddress string `json:"userAddress" binding:"required"` // 用户的钱包地址
-	CoinName    string `json:"coinName" binding:"required"`    // 币种名称
+	CoinName    string `json:"coinName" `                      // 币种名称
 	//ChainID     uint32 `json:"chainID"`                        // 链ID
+}
+
+// GetWalletActivity 获取钱包活动信息 交易记录
+type GetWalletActivity struct {
+	Protocol    string `json:"protocol" binding:"required"`    // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
+	UserAddress string `json:"userAddress" binding:"required"` // 用户的钱包地址
+	CoinName    string `json:"coinName" `                      // 币种名称
 }
 
 // SendTransaction 发起一笔交易
