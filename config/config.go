@@ -52,5 +52,31 @@ func NewConfig(confPath string) (Config, error) {
 			return config, err
 		}
 	}
+
+	// 将配置文件写入数据库
+	//loadToDB(&config)
 	return config, nil
 }
+
+//func loadToDB(config *Config) {
+//
+//	find, err := db.WalletDB.Find(context.Background(), &Config{})
+//	if err != mongo.ErrNoDocuments {
+//		// 更新
+//		res, err := db.WalletDB.UpdateByID(context.Background(), find.ID(), config)
+//		if err != nil {
+//			panic(err)
+//			return
+//		}
+//		log.Info().Msgf("InsertID is %s ", res.UpsertedID)
+//	} else {
+//		// 插入
+//		res, err := db.WalletDB.InsertOne(context.Background(), config)
+//		if err != nil {
+//			panic(err)
+//			return
+//		}
+//		log.Info().Msgf("InsertID is %s ", res.InsertedID)
+//	}
+//
+//}

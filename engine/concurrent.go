@@ -40,11 +40,12 @@ type Scheduler interface {
 type ConCurrentEngine struct {
 	scheduler Scheduler
 	Worker    Worker
-	Config    config.EngineConfig
-	Protocol  string
-	CoinName  string
-	DB        db.Database
-	http      *client.HttpClient
+	// 添加新币的时候要修改这个
+	Config   config.EngineConfig
+	Protocol string
+	CoinName string
+	DB       db.Database
+	http     *client.HttpClient
 }
 
 // Run 启动
@@ -189,14 +190,27 @@ func (c *ConCurrentEngine) createReceiptWorker() {
 				// 检测这里 若里面有存储的数据 则开始根据Hash查最新的区块 看其中有没有交易成功
 
 				if transaction.Hash == pendingHash {
+					var tran *types.Transaction
+					worker := c.Worker.(*EthWorker)
+					trans := worker.TransHistory[transaction.From]
+					for _, v := range trans {
+						temp := v
+						if temp.Hash == transaction.Hash {
+							tran = temp
+							break
+						}
+					}
 					if transaction.Status != 1 {
 						log.Error().Msgf("交易失败：%v", transaction.Hash)
 						// TODO 发出通知
+						tran.Status = 0
 					} else {
 						log.Info().Msgf("交易成功: %v", transaction.Hash)
 						// TODO 将交易信息存储在中心化的服务器 方便后续的查询
-
+						tran.Status = 0
 					}
+					//jsRes,_ :=json.Marshal(tran)
+					//c.DB.Put(tr,string(jsRes))
 				}
 				log.Info().Msgf("交易完成：%v", transaction.Hash)
 			}
@@ -347,4 +361,34 @@ func NewEngine(config config.EngineConfig) (*ConCurrentEngine, error) {
 		DB:        keyDB,
 		http:      http,
 	}, nil
+}
+
+func AddNewCoin(coinName, contractAddress string) error {
+
+	eng, err := NewEngine(config.EngineConfig{
+		CoinName:          coinName,
+		Contract:          contractAddress,
+		Protocol:          "eth",
+		File:              "data/eth",
+		WalletPrefix:      "wallet-",
+		HashPrefix:        "hash-",
+		BlockInit:         0,
+		BlockAfterTime:    1,
+		ReceiptCount:      20,
+		ReceiptAfterTime:  1,
+		RechargeNotifyUrl: "http://localhost:10001/api/withdraw",
+		WithdrawNotifyUrl: "http://localhost:10001/api/withdraw",
+	})
+	if err != nil {
+		log.Info().Msgf("AddNewCoin err is %s ", err.Error())
+		return err
+	}
+	// 开启这个新协议的监听
+	go eng.Run()
+	return nil
+}
+
+// CheckMulSign 检查是否开启多签 是则直接进行多签的逻辑
+func CheckMulSign() {
+
 }

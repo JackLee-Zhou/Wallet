@@ -43,7 +43,7 @@ type AddNewCoinReq struct {
 	Protocol        string `json:"protocol" binding:"required"`        // 指定要获取的链名称
 	ContractAddress string `json:"contractAddress" binding:"required"` // 指定新币的合约地址
 	UserAddress     string `json:"userAddress" binding:"required"`     // 用户的钱包地址
-	//CoinName        string
+	CoinName        string
 }
 
 // GetBalanceReq 获取账户余额信息

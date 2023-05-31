@@ -12,7 +12,6 @@ import (
 
 // Start 启动服务
 func Start(isSwag bool, configPath string) {
-
 	conf, err := config.NewConfig(configPath)
 
 	if err != nil || len(conf.Engines) == 0 {
@@ -47,7 +46,7 @@ func Start(isSwag bool, configPath string) {
 	server.Use(gin.Recovery())
 	server.Use(SetEngine(engines...))
 
-	auth := server.Group("/api", AuthRequired())
+	auth := server.Group("/api")
 	{
 		auth.POST("/createWallet", CreateWallet)
 		auth.POST("/delWallet", DelWallet)

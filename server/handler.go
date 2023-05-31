@@ -209,6 +209,11 @@ func AddNewCoin(c *gin.Context) {
 		HandleValidatorError(c, err)
 		return
 	}
+	err := engine.AddNewCoin(newCoin.CoinName, newCoin.ContractAddress)
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
 }
 
 // GetActivity 获取钱包活动信息 交易记录
@@ -227,10 +232,8 @@ func GetActivity(c *gin.Context) {
 	}
 	currentEngine := v.(*engine.ConCurrentEngine)
 	worker := currentEngine.Worker.(*engine.EthWorker)
-	for _, v := range worker.TransHistory {
-		temp := v
-		res.History = append(res.History, temp)
-	}
+	// 查询历史记录
+	res.History = worker.TransHistory[walletActivity.UserAddress]
 	res.UserAddress = walletActivity.UserAddress
 	APIResponse(c, nil, res)
 	return

@@ -25,7 +25,7 @@ type EthWorker struct {
 	tokenAbi               abi.ABI     // 合约的abi
 	Pending                chan string // 待执行的交易
 	nonceLock              sync.Mutex
-	TransHistory           map[string]*types.Transaction // 交易历史记录
+	TransHistory           map[string][]*types.Transaction // 交易历史记录
 }
 
 // GetGasPrice 获取最新的燃料价格
@@ -59,7 +59,7 @@ func NewEthWorker(confirms uint64, contract string, url string) (*EthWorker, err
 		tokenTransferEventHash: tokenTransferEventHash,
 		tokenAbi:               tokenAbi,
 		Pending:                make(chan string, 64), // 大小
-		TransHistory:           make(map[string]*types.Transaction),
+		TransHistory:           make(map[string][]*types.Transaction),
 	}, nil
 }
 
@@ -298,6 +298,7 @@ func (e *EthWorker) Transfer(privateKeyStr string, toAddress string, value *big.
 
 	var data []byte
 	var err error
+	var value20 *big.Int
 	if e.token != "" {
 		contractTransferHashSig := []byte("transfer(address,uint256)")
 		contractTransferHash := crypto.Keccak256Hash(contractTransferHashSig)
@@ -307,16 +308,18 @@ func (e *EthWorker) Transfer(privateKeyStr string, toAddress string, value *big.
 		if err != nil {
 			return "", "", 0, err
 		}
+		value20 = value
 		value = big.NewInt(0)
 	}
 
-	return e.sendTransaction(e.token, privateKeyStr, toAddress, value, nonce, data)
+	return e.sendTransaction(e.token, privateKeyStr, toAddress, value, value20, nonce, data)
 }
 
 // sendTransaction 创建并发送交易
 func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string,
-	toAddress string, value *big.Int, nonce uint64, data []byte) (string, string, uint64, error) {
-
+	toAddress string, value *big.Int, value20 *big.Int, nonce uint64, data []byte) (string, string, uint64, error) {
+	var trueValue *big.Int
+	trueValue = value
 	privateKey, err := crypto.HexToECDSA(privateKeyStr)
 	if err != nil {
 		return "", "", 0, err
@@ -358,6 +361,7 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 
 	if contractAddress != "" {
 		value = big.NewInt(0)
+		trueValue = value20
 		contractAddressHex := common.HexToAddress(contractAddress)
 		toAddressHex = &contractAddressHex
 	}
@@ -402,6 +406,16 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 	// TODO 打入管道中  createReceiptWorker 中去处理监听交易是否成功
 
 	e.Pending <- tx.Hash().String()
+
+	// 要落地
+	e.TransHistory[fromAddress.String()] = append(e.TransHistory[fromAddress.String()], &types.Transaction{
+		Hash:   tx.Hash().String(),
+		From:   fromAddress.String(),
+		To:     txData.To.String(),
+		Value:  trueValue,
+		Status: uint(0),
+	})
+
 	return fromAddress.Hex(), signTx.Hash().Hex(), nonce, nil
 }
 

@@ -20,7 +20,7 @@ func HandleValidatorError(c *gin.Context, err error) {
 	return
 }
 
-//   firstErr 返回第一个错误
+// firstErr 返回第一个错误
 func firstErr(filedMap map[string]string) string {
 	for _, err := range filedMap {
 		return err
