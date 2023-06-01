@@ -73,6 +73,9 @@ func Start(isSwag bool, configPath string) {
 	// 获取账户的活动信息
 	server.GET("/getActivity", GetActivity)
 
+	server.POST("/checkTrans", CheckTrans)
+	server.POST("/changSignType", ChangSignType)
+
 	if isSwag {
 		swagHandler := ginSwagger.WrapHandler(swaggerFiles.Handler)
 		server.GET("/swagger/*any", swagHandler)

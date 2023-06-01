@@ -17,13 +17,23 @@ import (
 	"sync"
 )
 
+type MulSignCounter struct {
+	Counter int32
+	Lock    sync.Locker
+}
+
+var signCounter *MulSignCounter
+
+//var MulSignCounter int32
+//var MulSignLocker sync.Mutex
+
 type EthWorker struct {
 	confirms               uint64 // 需要的确认数
 	http                   *ethclient.Client
 	token                  string // 代币合约地址，为空表示主币
 	tokenTransferEventHash common.Hash
-	tokenAbi               abi.ABI     // 合约的abi
-	Pending                chan string // 待执行的交易
+	tokenAbi               abi.ABI             // 合约的abi
+	Pending                map[string]struct{} // 待执行的交易
 	nonceLock              sync.Mutex
 	TransHistory           map[string][]*types.Transaction // 交易历史记录
 }
@@ -58,7 +68,7 @@ func NewEthWorker(confirms uint64, contract string, url string) (*EthWorker, err
 		http:                   http,
 		tokenTransferEventHash: tokenTransferEventHash,
 		tokenAbi:               tokenAbi,
-		Pending:                make(chan string, 64), // 大小
+		Pending:                make(map[string]struct{}), // 大小
 		TransHistory:           make(map[string][]*types.Transaction),
 	}, nil
 }
@@ -373,11 +383,10 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 	//
 	//gasPrice = gasPrice.Add(gasPrice, b.BaseFee())
 	txData := &ethTypes.DynamicFeeTx{
-		Nonce: nonce,
-		To:    toAddressHex,
-		Value: value,
-		Gas:   gasLimit,
-		//GasPrice: gasPrice.Add(gasPrice, big.NewInt(100000000)),
+		Nonce:     nonce,
+		To:        toAddressHex,
+		Value:     value,
+		Gas:       gasLimit,
 		GasFeeCap: gasPrice,
 		GasTipCap: gasTip,
 		Data:      data,
@@ -405,7 +414,7 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 
 	// TODO 打入管道中  createReceiptWorker 中去处理监听交易是否成功
 
-	e.Pending <- tx.Hash().String()
+	e.Pending[signTx.Hash().Hex()] = struct{}{}
 
 	// 要落地
 	e.TransHistory[fromAddress.String()] = append(e.TransHistory[fromAddress.String()], &types.Transaction{
@@ -440,4 +449,12 @@ func makeEthERC20TransferData(contractTransferHash common.Hash, toAddress *commo
 	paddedAmount := common.LeftPadBytes(amount.Bytes(), 32)
 	data = append(data, paddedAmount...)
 	return data, nil
+}
+
+// MulSignMode 多签
+func (e *EthWorker) MulSignMode(to, coinName, num, timeStamp string) (int32, string) {
+	signCounter.Lock.Lock()
+	defer signCounter.Lock.Unlock()
+
+	return 0, ""
 }

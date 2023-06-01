@@ -6,7 +6,12 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var rdb *redis.Client
+var Rdb *redis.Client
+
+const (
+	ConfigDB = "Config"
+	UserDB   = "User"
+)
 
 // init 数据库链接初始化
 func init() {
@@ -24,15 +29,16 @@ func init() {
 	//	log.Fatal().Msgf("MongoConnect err is %s ", err.Error())
 	//}
 	//fmt.Println("Connected to MongoDB!")
-	rdb = redis.NewClient(&redis.Options{
+	Rdb = redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",
 		Password: "", // no password set
 		DB:       0,  // use default DB
 	})
 
-	res, err := rdb.Ping(context.Background()).Result()
+	res, err := Rdb.Ping(context.Background()).Result()
 	log.Info().Msgf("Connection res is %v ", res)
 	if err != nil {
+		log.Fatal().Msgf("Connection err is %s ", err.Error())
 		return
 	}
 }

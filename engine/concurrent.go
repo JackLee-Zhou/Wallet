@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"github.com/lmxdawn/wallet/client"
 	"github.com/lmxdawn/wallet/config"
 	"github.com/lmxdawn/wallet/db"
@@ -41,11 +42,12 @@ type ConCurrentEngine struct {
 	scheduler Scheduler
 	Worker    Worker
 	// 添加新币的时候要修改这个
-	Config   config.EngineConfig
-	Protocol string
-	CoinName string
-	DB       db.Database
-	http     *client.HttpClient
+	Config      config.EngineConfig
+	Protocol    string
+	CoinName    string
+	DB          db.Database
+	http        *client.HttpClient
+	TransNotify map[string]struct{}
 }
 
 // Run 启动
@@ -64,6 +66,8 @@ func (c *ConCurrentEngine) Run() {
 
 	select {}
 }
+
+// TODO 监听余额变换
 
 // blockLoop 区块循环监听
 func (c *ConCurrentEngine) blockLoop() {
@@ -90,9 +94,9 @@ func (c *ConCurrentEngine) blockLoop() {
 	c.createBlockWorker(blockWorkerOut)
 
 	// 批量创建交易worker
-	//for i := uint64(0); i < c.Config.ReceiptCount; i++ {
-	c.createReceiptWorker()
-	//}
+	for i := uint64(0); i < c.Config.ReceiptCount; i++ {
+		c.createReceiptWorker()
+	}
 
 	c.scheduler.BlockSubmit(blockNumber)
 
@@ -172,48 +176,57 @@ func (c *ConCurrentEngine) createReceiptWorker() {
 	eWorker := c.Worker.(*EthWorker)
 	go func() {
 		for {
-			select {
-			case pendingHash := <-eWorker.Pending:
-				log.Info().Msgf("Find Transaction %s ", pendingHash)
-				// 好像没用 ?
-				c.scheduler.ReceiptWorkerReady(in)
-				// 这里的 in 是怎么读出数据的 ?
-				transaction := <-in
-				// 查询交易的情况
-				err := c.Worker.GetTransactionReceipt(&transaction)
-				if err != nil {
-					log.Info().Msgf("等待%d秒，收据信息无效, err: %v", c.Config.ReceiptAfterTime, err)
-					<-time.After(time.Duration(c.Config.ReceiptAfterTime) * time.Second)
-					c.scheduler.ReceiptSubmit(transaction)
-				}
-				// TODO 在这里比对数据库中需要监听的交易 Hash
-				// 检测这里 若里面有存储的数据 则开始根据Hash查最新的区块 看其中有没有交易成功
+			c.scheduler.ReceiptWorkerReady(in)
+			// 这里的 in 是怎么读出数据的 ?
+			transaction := <-in
 
-				if transaction.Hash == pendingHash {
-					var tran *types.Transaction
-					worker := c.Worker.(*EthWorker)
-					trans := worker.TransHistory[transaction.From]
+			// 查询交易的情况
+			err := c.Worker.GetTransactionReceipt(&transaction)
+			if err != nil {
+				log.Info().Msgf("等待%d秒，收据信息无效, err: %v", c.Config.ReceiptAfterTime, err)
+				<-time.After(time.Duration(c.Config.ReceiptAfterTime) * time.Second)
+				c.scheduler.ReceiptSubmit(transaction)
+			}
+			// TODO 在这里比对数据库中需要监听的交易 Hash
+			// 检测这里 若里面有存储的数据 则开始根据Hash查最新的区块 看其中有没有交易成功
+			if len(eWorker.Pending) == 0 {
+				continue
+			}
+
+			log.Info().Msgf("Find Transaction %s BlockNum is %v", transaction.Hash, transaction.BlockNumber)
+			//log.Info().Msgf("Block Num is %v ", transaction.BlockNumber)
+
+			if _, ok := eWorker.Pending[transaction.Hash]; ok {
+				worker := c.Worker.(*EthWorker)
+				trans := worker.TransHistory[transaction.From]
+
+				if transaction.Status != 1 {
+					log.Error().Msgf("交易失败：%v", transaction.Hash)
+					// TODO 发出通知
 					for _, v := range trans {
 						temp := v
 						if temp.Hash == transaction.Hash {
-							tran = temp
+							temp.Status = 0
 							break
 						}
 					}
-					if transaction.Status != 1 {
-						log.Error().Msgf("交易失败：%v", transaction.Hash)
-						// TODO 发出通知
-						tran.Status = 0
-					} else {
-						log.Info().Msgf("交易成功: %v", transaction.Hash)
-						// TODO 将交易信息存储在中心化的服务器 方便后续的查询
-						tran.Status = 0
+				} else {
+					// TODO 将交易信息存储在中心化的服务器 方便后续的查询
+					for _, v := range trans {
+						temp := v
+						if temp.Hash == transaction.Hash {
+							temp.Status = 1
+							break
+						}
 					}
-					//jsRes,_ :=json.Marshal(tran)
-					//c.DB.Put(tr,string(jsRes))
+					c.TransNotify[transaction.Hash] = struct{}{}
+					log.Info().Msgf("交易完成：%v", transaction.Hash)
+					// 删除头部元素
 				}
-				log.Info().Msgf("交易完成：%v", transaction.Hash)
+				delete(eWorker.Pending, transaction.Hash)
+				//db.UpDataUserTransInfo(transaction.From,transaction.,trans)
 			}
+
 		}
 	}()
 }
@@ -289,6 +302,13 @@ func (c *ConCurrentEngine) Collection(address string, max *big.Int) (*big.Int, e
 // CreateWallet 创建钱包
 func (c *ConCurrentEngine) CreateWallet() (string, error) {
 	wallet, err := c.Worker.CreateWallet()
+	user := db.NewWalletUser(wallet.Address, wallet.PrivateKey, wallet.PublicKey)
+	if user != nil {
+		_, err := db.Rdb.HSet(context.Background(), db.UserDB, wallet.Address, user).Result()
+		if err != nil {
+			log.Info().Msgf("写入钱包失败，地址：%v 异常: %s", wallet.Address, err.Error())
+		}
+	}
 	if err != nil {
 		return "", err
 	}
@@ -353,13 +373,14 @@ func NewEngine(config config.EngineConfig) (*ConCurrentEngine, error) {
 
 	return &ConCurrentEngine{
 		//scheduler: scheduler.NewSimpleScheduler(), // 简单的任务调度器
-		scheduler: scheduler.NewQueueScheduler(), // 队列的任务调度器
-		Worker:    worker,
-		Config:    config,
-		Protocol:  config.Protocol,
-		CoinName:  config.CoinName,
-		DB:        keyDB,
-		http:      http,
+		scheduler:   scheduler.NewQueueScheduler(), // 队列的任务调度器
+		Worker:      worker,
+		Config:      config,
+		Protocol:    config.Protocol,
+		CoinName:    config.CoinName,
+		DB:          keyDB,
+		http:        http,
+		TransNotify: make(map[string]struct{}),
 	}, nil
 }
 

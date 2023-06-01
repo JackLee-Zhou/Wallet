@@ -1,12 +1,24 @@
 package server
 
 import (
+	"context"
+	"encoding/json"
+	"github.com/btcsuite/websocket"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
+	"github.com/lmxdawn/wallet/db"
 	"github.com/lmxdawn/wallet/engine"
+	"github.com/rs/zerolog/log"
 	"math/big"
+	"net/http"
 	"strconv"
 )
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
 
 // CreateWallet ...
 // @Tags 钱包
@@ -252,6 +264,8 @@ func Transaction(c *gin.Context) {
 		HandleValidatorError(c, ErrNotData)
 		return
 	}
+	//ws, _ := upgrader.Upgrade(c.Writer, c.Request, nil)
+
 	currentEngine := v.(*engine.ConCurrentEngine)
 	num, err := strconv.Atoi(sT.Num)
 	if err != nil {
@@ -259,22 +273,56 @@ func Transaction(c *gin.Context) {
 		return
 	}
 	// TODO 根据地址 数据库中查询获取到 privateKey
-	get, err := currentEngine.DB.Get(currentEngine.Config.WalletPrefix + sT.From)
+	getRes, err := db.Rdb.HGet(context.Background(), db.UserDB, sT.From).Result()
+	if err != nil {
+		APIResponse(c, err, nil)
+	}
+	usr := db.User{}
+	json.Unmarshal([]byte(getRes), &usr)
+	//err = usr.UnmarshalBinary([]byte(getRes))
+	if err != nil {
+		APIResponse(c, err, nil)
+	}
+	// TODO 检查是否是多签 若是则走多签的流程
+	if usr.SingType != db.SingerSign {
+		usr.MulSignMode(sT.To, sT.CoinName, sT.Num)
+	}
+
+	// 后端签名
+	// 这里 返回的仅是放到了交易池里面等到被执行，并没有实际的被真正的执行 还是处于 pending 状态
+	fromHex, signHex, nonce, err := currentEngine.Worker.Transfer(usr.PrivateKey, sT.To, big.NewInt(int64(num)), 0)
 	if err != nil {
 		APIResponse(c, err, nil)
 		return
 	}
-	// 后端签名
-	// 这里 返回的仅是放到了交易池里面等到被执行，并没有实际的被真正的执行 还是处于 pending 状态
-	fromHex, signHex, nonce, err := currentEngine.Worker.Transfer(get, sT.To, big.NewInt(int64(num)), 0)
+	// 这里操作数据库 落地存储
+	worker := currentEngine.Worker.(*engine.EthWorker)
+	trans := worker.TransHistory[usr.Address]
+	for _, value := range usr.UserAssets {
+		temp := value
+		if sT.CoinName == temp.Symbol {
+			temp.Trans = trans
+			break
+		}
+	}
+
+	_, err = db.Rdb.HSet(context.Background(), db.UserDB, usr.Address, usr).Result()
 	if err != nil {
-		APIResponse(c, err, nil)
-		return
+		log.Info().Msgf("Trans to DB err is %s ", err.Error())
 	}
 	res.FromHex = fromHex
 	res.SignHax = signHex
 	res.Nonce = nonce
 	APIResponse(c, nil, res)
+
+	// TODO 设置主动推送的限制时间
+	//for {
+	//	select {
+	//	case finish := <-currentEngine.TransNotify:
+	//		err :=ws.WriteJSON(finish)
+	//		if
+	//	}
+	//}
 }
 
 // GetLinkStatus 获取实时的链上状态
@@ -328,7 +376,106 @@ func AddNetWork(c *gin.Context) {
 
 }
 
+// CheckTrans 检查交易是否成功
+func CheckTrans(c *gin.Context) {
+	var cT CheckTransReq
+	if err := c.ShouldBindJSON(&cT); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	v, ok := c.Get(cT.Protocol + cT.CoinName)
+	if !ok {
+		HandleValidatorError(c, ErrNotData)
+		return
+	}
+	currentEngine := v.(*engine.ConCurrentEngine)
+	if _, ok := currentEngine.TransNotify[cT.TxHash]; !ok {
+		APIResponse(c, ErrNoSuccess, struct {
+			isOk bool
+		}{
+			isOk: false,
+		})
+	}
+	APIResponse(c, nil, struct {
+		isOk bool
+	}{
+		isOk: true,
+	})
+}
+
 // GetWalletInfo 获取钱包基础信息
 func GetWalletInfo(c *gin.Context) {
+	address, ok := c.GetQuery("Address")
+	if !ok {
+		APIResponse(c, ErrNoAddress, nil)
+	}
+
+	usr := db.GetUserFromDB(address)
+	log.Info().Msgf("GetWalletInfo info is %v ", usr)
+	APIResponse(c, nil, usr)
+}
+
+// ImportWallet 从外部导入钱包
+func ImportWallet(c *gin.Context) {
+
+}
+
+// ExportWallet 导出钱包
+func ExportWallet(c *gin.Context) {
+
+}
+
+// ChangSignType 改变签名方式
+func ChangSignType(c *gin.Context) {
+	var csT ChangSignTypeReq
+	if err := c.ShouldBindJSON(&csT); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	usr := db.GetUserFromDB(csT.WalletAddress)
+
+	// 不是单签
+	if csT.SignType != db.SingerSign {
+		switch csT.SignType {
+		case db.ThreeTwoSign:
+			if len(csT.SingGroup) != 3 {
+				APIResponse(c, ErrSignGroupLengthErr, nil)
+			}
+			for _, v := range csT.SingGroup {
+				temp := v
+				if !db.CheckWalletIsInDB(temp) {
+					APIResponse(c, ErrWalletNotInDB, nil)
+				}
+			}
+			usr.SingType = db.ThreeTwoSign
+			usr.SignGroup = csT.SingGroup
+		case db.FiveFourSign:
+			if len(csT.SingGroup) != 5 {
+				APIResponse(c, ErrSignGroupLengthErr, nil)
+			}
+			for _, v := range csT.SingGroup {
+				temp := v
+				if !db.CheckWalletIsInDB(temp) {
+					APIResponse(c, ErrWalletNotInDB, nil)
+				}
+			}
+			usr.SingType = db.FiveFourSign
+			usr.SignGroup = csT.SingGroup
+		}
+	}
+	_, err := db.Rdb.HSet(context.Background(), db.UserDB, csT.WalletAddress, usr).Result()
+	if err != nil {
+		log.Info().Msgf("ChangSignType UpDate UserInfo Fail err is %s", err.Error())
+		APIResponse(c, err, nil)
+	}
+	APIResponse(c, nil, &struct {
+		Message string
+	}{
+		Message: "调整成功",
+	})
+}
+
+// Sign 其他用户签名
+func Sign(c *gin.Context) {
 
 }

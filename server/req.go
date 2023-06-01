@@ -69,3 +69,18 @@ type SendTransaction struct {
 	To       string `json:"to" binding:"required"`       // 接收者
 	Num      string `json:"num" binding:"required"`      // 数量
 }
+
+// CheckTransReq 检查交易是否成功
+type CheckTransReq struct {
+	Protocol string `json:"protocol" binding:"required"` // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
+	Address  string `json:"address" binding:"required"`  // 用户的钱包地址
+	CoinName string `json:"coinName" binding:"required"` // 币种名称 为空表示原生币
+	TxHash   string `json:"txHash"  binding:"required"`  // 交易Hash
+}
+
+// ChangSignTypeReq 改变签名方式
+type ChangSignTypeReq struct {
+	WalletAddress string   `json:"walletAddress" binding:"required"` // 需要改变的钱包地址
+	SignType      int32    `json:"signType" binding:"required"`      // 签名模式
+	SingGroup     []string `json:"singGroup"`                        // 若是多签则要传入管理的用户钱包地址
+}
