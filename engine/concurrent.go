@@ -94,9 +94,9 @@ func (c *ConCurrentEngine) blockLoop() {
 	c.createBlockWorker(blockWorkerOut)
 
 	// 批量创建交易worker
-	for i := uint64(0); i < c.Config.ReceiptCount; i++ {
-		c.createReceiptWorker()
-	}
+	//for i := uint64(0); i < c.Config.ReceiptCount; i++ {
+	c.createReceiptWorker()
+	//}
 
 	c.scheduler.BlockSubmit(blockNumber)
 

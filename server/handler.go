@@ -9,6 +9,7 @@ import (
 	"github.com/lmxdawn/wallet/db"
 	"github.com/lmxdawn/wallet/engine"
 	"github.com/rs/zerolog/log"
+	"io/ioutil"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -422,7 +423,17 @@ func ImportWallet(c *gin.Context) {
 
 // ExportWallet 导出钱包
 func ExportWallet(c *gin.Context) {
-
+	var eW ExportWalletReq
+	if err := c.ShouldBindJSON(&eW); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	usr := db.GetUserFromDB(eW.Address)
+	APIResponse(c, nil, struct {
+		PrivateKey string
+	}{
+		PrivateKey: usr.PrivateKey,
+	})
 }
 
 // ChangSignType 改变签名方式
@@ -478,4 +489,31 @@ func ChangSignType(c *gin.Context) {
 // Sign 其他用户签名
 func Sign(c *gin.Context) {
 
+}
+
+func GetHistoryTrans(c *gin.Context) {
+	address, ok := c.GetQuery("address")
+	if !ok {
+		APIResponse(c, ErrParam, nil)
+	}
+	response, err := http.Get("https://api-testnet.polygonscan.com/api?" +
+		"module=account&action=txlist&address=" + address + "&startblock=0&endblock=99999999&page=1&offset=10" +
+		"&sort=asc&apikey=432F174RDZHNVM81M4JT8UJAWFW87DKUBV")
+	if err != nil {
+		APIResponse(c, err, nil)
+	}
+	defer response.Body.Close()
+	//res := []byte{}
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+	var hR History
+	err = json.Unmarshal(body, &hR)
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+	APIResponse(c, nil, hR.Result)
 }

@@ -84,3 +84,8 @@ type ChangSignTypeReq struct {
 	SignType      int32    `json:"signType" binding:"required"`      // 签名模式
 	SingGroup     []string `json:"singGroup"`                        // 若是多签则要传入管理的用户钱包地址
 }
+
+// ExportWalletReq 导出钱包
+type ExportWalletReq struct {
+	Address string `json:"address" binding:"required"` // 导出地址
+}

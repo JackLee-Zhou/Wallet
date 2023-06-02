@@ -10,7 +10,7 @@ engines:
     contract:
     contract_type:
     protocol: eth
-    rpc: https://endpoints.omniatech.io/v1/matic/mumbai/public
+    rpc: https://rpc.ankr.com/polygon_mumbai
     file: data/eth
     wallet_prefix: wallet-
     hash_prefix: hash-

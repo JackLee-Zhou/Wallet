@@ -458,3 +458,5 @@ func (e *EthWorker) MulSignMode(to, coinName, num, timeStamp string) (int32, str
 
 	return 0, ""
 }
+
+// 获取钱包地址的交易记录信息
