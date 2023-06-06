@@ -56,6 +56,7 @@ func Start(isSwag bool, configPath string) {
 	}
 	// 登录检测
 	server.POST("/login", Login)
+	server.POST("/register", Register)
 	// TODO 发起一笔交易
 	server.POST("/transaction", Transaction)
 

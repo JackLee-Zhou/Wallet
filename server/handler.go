@@ -585,5 +585,37 @@ func GetHistoryTrans(c *gin.Context) {
 
 // Login 处理登录请求 鉴权
 func Login(c *gin.Context) {
+	var lR LoginReq
+	err := c.ShouldBindJSON(&lR)
+	if err != nil {
+		log.Info().Msgf("Login bind err is %s ", err.Error())
+		APIResponse(c, err, nil)
+	}
+	ac := db.GetAccountInfo(lR.Account)
 
+	if ac == nil {
+		APIResponse(c, ErrAccountErr, nil)
+	}
+
+	// TODO 加密
+	if ac.PassWD != lR.PassWD {
+		APIResponse(c, ErrPasswdErr, nil)
+	}
+
+	APIResponse(c, nil, ac)
+}
+
+// Register 注册
+func Register(c *gin.Context) {
+	var rR RegisterReq
+	err := c.ShouldBindJSON(&rR)
+	if err != nil {
+		log.Info().Msgf("Register bind err is %s ", err.Error())
+		APIResponse(c, err, nil)
+	}
+	account, err := db.UpDataAccountInfo(rR.Account, rR.PassWD)
+	if err != nil {
+		APIResponse(c, err, nil)
+	}
+	APIResponse(c, nil, account)
 }

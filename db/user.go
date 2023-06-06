@@ -51,6 +51,16 @@ type Transfer struct {
 	TimeStamp string // 这笔交易的时间戳
 }
 
+type Account struct {
+	PassWD     string   // 密码
+	WalletList []string // 对应的钱包地址列表
+}
+
+func (a Account) MarshalBinary() ([]byte, error) {
+
+	return json.Marshal(a)
+}
+
 func (t Transfer) MarshalBinary() ([]byte, error) {
 
 	return json.Marshal(t)
@@ -195,4 +205,24 @@ func GetTransferFromDB(address string) (data []*Transfer) {
 		})
 	}
 	return
+}
+
+func UpDataAccountInfo(account, passwd string) (*Account, error) {
+	return nil, nil
+}
+
+func GetAccountInfo(account string) *Account {
+	res, err := Rdb.HGet(context.Background(), AccountDB, account).Result()
+	if err != nil {
+		log.Info().Msgf("GetAccountInfo get err is %s ", err.Error())
+		return nil
+	}
+	ac := &Account{}
+	err = json.Unmarshal([]byte(res), ac)
+	if err != nil {
+		log.Info().Msgf("GetAccountInfo marshal err is %s ", err.Error())
+		return nil
+	}
+	return ac
+
 }

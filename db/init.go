@@ -12,6 +12,7 @@ const (
 	ConfigDB   = "Config"
 	UserDB     = "User"
 	TransferDB = "Transfer"
+	AccountDB  = "Account"
 )
 
 // init 数据库链接初始化

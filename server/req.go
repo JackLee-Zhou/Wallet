@@ -89,3 +89,15 @@ type ChangSignTypeReq struct {
 type ExportWalletReq struct {
 	Address string `json:"address" binding:"required"` // 导出地址
 }
+
+// LoginReq 登录请求
+type LoginReq struct {
+	Account string `json:"account" binding:"required"` // 登录账户
+	PassWD  string `json:"passWD" binding:"required"`  // 传入的密码
+}
+
+// RegisterReq 注册请求
+type RegisterReq struct {
+	Account string `json:"account" binding:"required"` // 登录账户
+	PassWD  string `json:"passWD" binding:"required"`  // 传入的密码
+}

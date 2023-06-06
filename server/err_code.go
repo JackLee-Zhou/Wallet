@@ -17,6 +17,8 @@ var (
 	ErrNoSuccess          = &Errno{Code: 10010, Message: "交易未成功"}
 	ErrSignGroupLengthErr = &Errno{Code: 10011, Message: "多签授权数组地址错误"}
 	ErrWalletNotInDB      = &Errno{Code: 10012, Message: "地址不在数据库中"}
+	ErrPasswdErr          = &Errno{Code: 10013, Message: "密码错误"}
+	ErrAccountErr         = &Errno{Code: 10014, Message: "账户错误"}
 )
 
 // Errno ...
