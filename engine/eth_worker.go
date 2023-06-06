@@ -328,8 +328,8 @@ func (e *EthWorker) Transfer(privateKeyStr string, toAddress string, value *big.
 // sendTransaction 创建并发送交易
 func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string,
 	toAddress string, value *big.Int, value20 *big.Int, nonce uint64, data []byte) (string, string, uint64, error) {
-	var trueValue *big.Int
-	trueValue = value
+	//var trueValue *big.Int
+	//trueValue = value
 	privateKey, err := crypto.HexToECDSA(privateKeyStr)
 	if err != nil {
 		return "", "", 0, err
@@ -371,7 +371,7 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 
 	if contractAddress != "" {
 		value = big.NewInt(0)
-		trueValue = value20
+		//trueValue = value20
 		contractAddressHex := common.HexToAddress(contractAddress)
 		toAddressHex = &contractAddressHex
 	}
@@ -417,13 +417,13 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 	e.Pending[signTx.Hash().Hex()] = struct{}{}
 
 	// 要落地
-	e.TransHistory[fromAddress.String()] = append(e.TransHistory[fromAddress.String()], &types.Transaction{
-		Hash:   tx.Hash().String(),
-		From:   fromAddress.String(),
-		To:     txData.To.String(),
-		Value:  trueValue,
-		Status: uint(0),
-	})
+	//e.TransHistory[fromAddress.String()] = append(e.TransHistory[fromAddress.String()], &types.Transaction{
+	//	Hash:   tx.Hash().String(),
+	//	From:   fromAddress.String(),
+	//	To:     txData.To.String(),
+	//	Value:  trueValue,
+	//	Status: uint(0),
+	//})
 
 	return fromAddress.Hex(), signTx.Hash().Hex(), nonce, nil
 }
@@ -458,5 +458,3 @@ func (e *EthWorker) MulSignMode(to, coinName, num, timeStamp string) (int32, str
 
 	return 0, ""
 }
-
-// 获取钱包地址的交易记录信息

@@ -9,10 +9,11 @@ import (
 	"github.com/lmxdawn/wallet/db"
 	"github.com/lmxdawn/wallet/engine"
 	"github.com/rs/zerolog/log"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 var upgrader = websocket.Upgrader{
@@ -252,8 +253,19 @@ func GetActivity(c *gin.Context) {
 	return
 }
 
-// Transaction 发起一笔交易
+// Transaction
+// @Tags 交易
+// @Summary 发起一笔交易
+// @Produce json
 func Transaction(c *gin.Context) {
+	//upgrader.Subprotocols = []string{c.GetHeader("Sec-WebSocket-Protocol")}
+	//ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	//
+	//if err != nil {
+	//	log.Info().Msgf("Ws UpGrader err is %s", err.Error())
+	//	APIResponse(c, err, nil)
+	//	return
+	//}
 	var sT SendTransaction
 	var res SendTransactionRes
 	if err := c.ShouldBindJSON(&sT); err != nil {
@@ -265,7 +277,6 @@ func Transaction(c *gin.Context) {
 		HandleValidatorError(c, ErrNotData)
 		return
 	}
-	//ws, _ := upgrader.Upgrade(c.Writer, c.Request, nil)
 
 	currentEngine := v.(*engine.ConCurrentEngine)
 	num, err := strconv.Atoi(sT.Num)
@@ -296,34 +307,72 @@ func Transaction(c *gin.Context) {
 		APIResponse(c, err, nil)
 		return
 	}
-	// 这里操作数据库 落地存储
-	worker := currentEngine.Worker.(*engine.EthWorker)
-	trans := worker.TransHistory[usr.Address]
-	for _, value := range usr.UserAssets {
-		temp := value
-		if sT.CoinName == temp.Symbol {
-			temp.Trans = trans
-			break
-		}
-	}
 
-	_, err = db.Rdb.HSet(context.Background(), db.UserDB, usr.Address, usr).Result()
-	if err != nil {
-		log.Info().Msgf("Trans to DB err is %s ", err.Error())
-	}
+	// 这里操作数据库 落地存储
+	//worker := currentEngine.Worker.(*engine.EthWorker)
+	//trans := worker.TransHistory[usr.Address]
+	//for i := 0; i < len(usr.UserAssets); i++ {
+	//	if sT.CoinName == usr.UserAssets[0].Symbol {
+	//		usr.UserAssets[0].Trans = trans
+	//		break
+	//	}
+	//}
+	//_, err = db.Rdb.HDel(context.Background(), db.UserDB, usr.Address).Result()
+	//if err != nil {
+	//	log.Info().Msgf("Trans to DB Del err is %s ", err.Error())
+	//}
+	//_, err = db.Rdb.HSet(context.Background(), db.UserDB, usr.Address, usr).Result()
+	//if err != nil {
+	//	log.Info().Msgf("Trans to DB err is %s ", err.Error())
+	//}
+	//log.Info().Msgf("data is %v", data)
 	res.FromHex = fromHex
 	res.SignHax = signHex
 	res.Nonce = nonce
-	APIResponse(c, nil, res)
-
-	// TODO 设置主动推送的限制时间
-	//for {
-	//	select {
-	//	case finish := <-currentEngine.TransNotify:
-	//		err :=ws.WriteJSON(finish)
-	//		if
-	//	}
+	//ws, err = upgrader.Upgrade(c.Writer, c.Request, nil)
+	//if err != nil {
+	//	log.Info().Msgf("Ws UpGrader err is ", err.Error())
+	//	APIResponse(c, err, nil)
+	//	return
 	//}
+	//defer ws.Close()
+
+	//data, _ := json.Marshal(res)
+	//err = ws.WriteMessage(200, data)
+	//if err != nil {
+	//	log.Info().Msgf("ws WriteMessage data err is %s", err.Error())
+	//	return
+	//}
+	go APIResponse(c, nil, res)
+
+	log.Info().Msgf("执行成功")
+
+	go func(hex string, current *engine.ConCurrentEngine) {
+		var totalWait int
+		for {
+			if totalWait > 20 {
+				break
+			}
+			totalWait++
+			log.Info().Msgf("Listen Total %d", totalWait)
+			_, ok := current.TransNotify.Load(hex)
+			if !ok {
+				time.Sleep(3 * time.Second)
+				continue
+			}
+			log.Info().Msgf("SuccessHax is %s ", hex)
+			//current.TransNotify.Delete(hex)
+			//err := ws.WriteMessage(200, []byte(hex))
+			//if err != nil {
+			//	log.Info().Msgf("ws WriteMessage err is %s", err.Error())
+			//	return
+			//}
+			break
+			// TODO 设置主动推送的限制时间 主动推送数据
+		}
+	}(res.SignHax, currentEngine)
+	// 如何 监听交易成功后
+
 }
 
 // GetLinkStatus 获取实时的链上状态
@@ -390,7 +439,7 @@ func CheckTrans(c *gin.Context) {
 		return
 	}
 	currentEngine := v.(*engine.ConCurrentEngine)
-	if _, ok := currentEngine.TransNotify[cT.TxHash]; !ok {
+	if _, ok := currentEngine.TransNotify.Load(cT.TxHash); !ok {
 		APIResponse(c, ErrNoSuccess, struct {
 			isOk bool
 		}{
@@ -406,19 +455,29 @@ func CheckTrans(c *gin.Context) {
 
 // GetWalletInfo 获取钱包基础信息
 func GetWalletInfo(c *gin.Context) {
+	type walletInfo struct {
+		User  *db.User
+		Trans []*db.Transfer
+	}
+	info := &walletInfo{}
 	address, ok := c.GetQuery("Address")
 	if !ok {
 		APIResponse(c, ErrNoAddress, nil)
 	}
 
 	usr := db.GetUserFromDB(address)
+	info.User = usr
+	info.Trans = append(info.Trans, db.GetTransferFromDB(address)...)
+
 	log.Info().Msgf("GetWalletInfo info is %v ", usr)
-	APIResponse(c, nil, usr)
+	APIResponse(c, nil, info)
 }
 
 // ImportWallet 从外部导入钱包
 func ImportWallet(c *gin.Context) {
-
+	// 根据私钥导入 导入后计算 地址和公钥
+	// 流程类似于 CreatWallet 但是指定私钥和公钥 不用生成
+	// GetAddressByPrivateKey 可以使用这个直接生成地址
 }
 
 // ExportWallet 导出钱包
@@ -491,11 +550,17 @@ func Sign(c *gin.Context) {
 
 }
 
+// GetHistoryTrans 根据 API 去查一个地址在链上的全部交易记录 这个有别与本地记录的 是去外部查询的
 func GetHistoryTrans(c *gin.Context) {
+
 	address, ok := c.GetQuery("address")
 	if !ok {
 		APIResponse(c, ErrParam, nil)
 	}
+	// 判断当前用户在那条链 根据不同的链调用不同的 api
+	// TODO 这个转账是外部转账 也就是原生币的交易记录 20币应该使用 internal 的转账
+	// action=txlistinternal
+	// TODO 取消硬编码
 	response, err := http.Get("https://api-testnet.polygonscan.com/api?" +
 		"module=account&action=txlist&address=" + address + "&startblock=0&endblock=99999999&page=1&offset=10" +
 		"&sort=asc&apikey=432F174RDZHNVM81M4JT8UJAWFW87DKUBV")
@@ -504,7 +569,7 @@ func GetHistoryTrans(c *gin.Context) {
 	}
 	defer response.Body.Close()
 	//res := []byte{}
-	body, err := ioutil.ReadAll(response.Body)
+	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		APIResponse(c, err, nil)
 		return
@@ -516,4 +581,9 @@ func GetHistoryTrans(c *gin.Context) {
 		return
 	}
 	APIResponse(c, nil, hR.Result)
+}
+
+// Login 处理登录请求 鉴权
+func Login(c *gin.Context) {
+
 }

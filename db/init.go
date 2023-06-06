@@ -9,8 +9,9 @@ import (
 var Rdb *redis.Client
 
 const (
-	ConfigDB = "Config"
-	UserDB   = "User"
+	ConfigDB   = "Config"
+	UserDB     = "User"
+	TransferDB = "Transfer"
 )
 
 // init 数据库链接初始化

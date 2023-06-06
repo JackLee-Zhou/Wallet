@@ -6,6 +6,8 @@ import (
 	"github.com/lmxdawn/wallet/types"
 	"github.com/rs/zerolog/log"
 	"math/big"
+	"strconv"
+	"time"
 )
 
 var SignTyp int32
@@ -38,6 +40,25 @@ type User struct {
 	CurrentNetWork *NetWork   // 用户当前所处的网络
 	NetWorks       []*NetWork // 用户添加的网络地址
 	UserAssets     []*Assets  // 用户资产数据
+}
+
+type Transfer struct {
+	Hex       string
+	From      string
+	To        string
+	Value     string
+	CoinName  string // 交易的币种 为空表示原生币
+	TimeStamp string // 这笔交易的时间戳
+}
+
+func (t Transfer) MarshalBinary() ([]byte, error) {
+
+	return json.Marshal(t)
+}
+
+func (t Transfer) UnmarshalBinary(data []byte) error {
+
+	return json.Unmarshal(data, &t)
 }
 
 func (c User) MarshalBinary() ([]byte, error) {
@@ -90,7 +111,7 @@ func GetUserFromDB(address string) *User {
 	}
 	log.Info().Msgf("GetUserFromDB res is %s ", res)
 	usr := &User{}
-	err = usr.UnmarshalBinary([]byte(res))
+	err = json.Unmarshal([]byte(res), usr)
 	if err != nil {
 		log.Info().Msgf("GetUserFromDB err is %s ", err.Error())
 	}
@@ -120,4 +141,58 @@ func CheckWalletIsInDB(address string) bool {
 func (u *User) MulSignMode(to, coinName, num string) bool {
 	// 先查一下数据库中 这笔交易那些用户已经签署了
 	return false
+}
+
+// UpDateTransInfo 更新交易数据
+func UpDateTransInfo(hex, from, to, value, coinName string) {
+
+	// 秒级时间戳
+	ts := &Transfer{Hex: hex, From: from, To: to, Value: value, CoinName: coinName, TimeStamp: strconv.Itoa(int(time.Now().UnixMicro()))}
+
+	_, err := Rdb.HSet(context.Background(), TransferDB, hex, ts).Result()
+	if err != nil {
+		log.Info().Msgf("UpDateTransInfo err is %s ", err.Error())
+		return
+	}
+}
+
+// GetTransferFromDB 获取以 from 为目标地址的交易信息
+func GetTransferFromDB(address string) (data []*Transfer) {
+	type info struct {
+		From      string
+		To        string
+		Value     string
+		CoinName  string // 交易的币种 为空表示原生币
+		TimeStamp string // 这笔交易
+	}
+	// TODO 不该这样获取所有
+	res, err := Rdb.HGetAll(context.Background(), TransferDB).Result()
+	if err != nil {
+		log.Info().Msgf("GetTransferFromDB err is %s ", err.Error())
+		return
+	}
+	for key, value := range res {
+		tempData := value
+		temp := &info{}
+		err := json.Unmarshal([]byte(tempData), temp)
+
+		if err != nil {
+			log.Info().Msgf("GetTransferFromDB UnMarshal err is %s ", err.Error())
+			continue
+		}
+
+		if temp.From != address && temp.To != address {
+			continue
+		}
+
+		data = append(data, &Transfer{
+			Hex:       key,
+			From:      temp.From,
+			To:        temp.To,
+			Value:     temp.Value,
+			CoinName:  temp.CoinName, // 交易的币种 为空表示原生币
+			TimeStamp: temp.TimeStamp,
+		})
+	}
+	return
 }

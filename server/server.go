@@ -54,7 +54,8 @@ func Start(isSwag bool, configPath string) {
 		auth.POST("/collection", Collection)
 		auth.GET("/getTransactionReceipt", GetTransactionReceipt)
 	}
-
+	// 登录检测
+	server.POST("/login", Login)
 	// TODO 发起一笔交易
 	server.POST("/transaction", Transaction)
 
@@ -77,11 +78,10 @@ func Start(isSwag bool, configPath string) {
 	server.POST("/checkTrans", CheckTrans)
 	server.POST("/changSignType", ChangSignType)
 	server.POST("/exportWallet", ExportWallet)
-
-	if isSwag {
-		swagHandler := ginSwagger.WrapHandler(swaggerFiles.Handler)
-		server.GET("/swagger/*any", swagHandler)
-	}
+	//if isSwag {
+	swagHandler := ginSwagger.WrapHandler(swaggerFiles.Handler)
+	server.GET("/swagger/*any", swagHandler)
+	//}
 
 	err = server.Run(fmt.Sprintf(":%v", conf.App.Port))
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"math/big"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -47,7 +48,7 @@ type ConCurrentEngine struct {
 	CoinName    string
 	DB          db.Database
 	http        *client.HttpClient
-	TransNotify map[string]struct{}
+	TransNotify sync.Map
 }
 
 // Run 启动
@@ -194,7 +195,6 @@ func (c *ConCurrentEngine) createReceiptWorker() {
 			}
 
 			log.Info().Msgf("Find Transaction %s BlockNum is %v", transaction.Hash, transaction.BlockNumber)
-			//log.Info().Msgf("Block Num is %v ", transaction.BlockNumber)
 
 			if _, ok := eWorker.Pending[transaction.Hash]; ok {
 				worker := c.Worker.(*EthWorker)
@@ -203,28 +203,28 @@ func (c *ConCurrentEngine) createReceiptWorker() {
 				if transaction.Status != 1 {
 					log.Error().Msgf("交易失败：%v", transaction.Hash)
 					// TODO 发出通知
-					for _, v := range trans {
-						temp := v
-						if temp.Hash == transaction.Hash {
-							temp.Status = 0
+					for i := 0; i < len(trans); i++ {
+						if trans[i].Hash == transaction.Hash {
+							trans[i].Status = 0
 							break
 						}
 					}
 				} else {
 					// TODO 将交易信息存储在中心化的服务器 方便后续的查询
-					for _, v := range trans {
-						temp := v
-						if temp.Hash == transaction.Hash {
-							temp.Status = 1
+					for i := 0; i < len(trans); i++ {
+						if trans[i].Hash == transaction.Hash {
+							trans[i].Status = 1
 							break
 						}
 					}
-					c.TransNotify[transaction.Hash] = struct{}{}
 					log.Info().Msgf("交易完成：%v", transaction.Hash)
-					// 删除头部元素
+					// 存入交易成功的元素
+					c.TransNotify.Store(transaction.Hash, struct{}{})
+					// 是否打入内存中
+					db.UpDateTransInfo(transaction.Hash, transaction.From, transaction.To, transaction.Value.String(), c.CoinName)
 				}
+				// TODO 并发
 				delete(eWorker.Pending, transaction.Hash)
-				//db.UpDataUserTransInfo(transaction.From,transaction.,trans)
 			}
 
 		}
@@ -373,14 +373,13 @@ func NewEngine(config config.EngineConfig) (*ConCurrentEngine, error) {
 
 	return &ConCurrentEngine{
 		//scheduler: scheduler.NewSimpleScheduler(), // 简单的任务调度器
-		scheduler:   scheduler.NewQueueScheduler(), // 队列的任务调度器
-		Worker:      worker,
-		Config:      config,
-		Protocol:    config.Protocol,
-		CoinName:    config.CoinName,
-		DB:          keyDB,
-		http:        http,
-		TransNotify: make(map[string]struct{}),
+		scheduler: scheduler.NewQueueScheduler(), // 队列的任务调度器
+		Worker:    worker,
+		Config:    config,
+		Protocol:  config.Protocol,
+		CoinName:  config.CoinName,
+		DB:        keyDB,
+		http:      http,
 	}, nil
 }
 
