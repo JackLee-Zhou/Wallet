@@ -33,7 +33,11 @@ var upgrader = websocket.Upgrader{
 func CreateWallet(c *gin.Context) {
 
 	var q CreateWalletReq
-
+	account := c.GetHeader("Account")
+	if account == "" {
+		APIResponse(c, ErrAccountErr, nil)
+		return
+	}
 	if err := c.ShouldBindJSON(&q); err != nil {
 		HandleValidatorError(c, err)
 		return
@@ -53,7 +57,23 @@ func CreateWallet(c *gin.Context) {
 		APIResponse(c, ErrCreateWallet, nil)
 		return
 	}
-
+	ac := db.GetAccountInfo(account)
+	if ac == nil {
+		log.Info().Msgf("CreateWallet GetAccountInfo err ac is nil ")
+		APIResponse(c, ErrAccountErr, nil)
+		return
+	}
+	ac.WalletList = append(ac.WalletList, address)
+	_, err = db.Rdb.HDel(context.Background(), db.AccountDB, ac.Account).Result()
+	if err != nil {
+		log.Info().Msgf("CreateWallet Del err is %s ", err.Error())
+		APIResponse(c, err, nil)
+	}
+	_, err = db.Rdb.HSet(context.Background(), db.AccountDB, ac.Account, ac).Result()
+	if err != nil {
+		log.Info().Msgf("CreateWallet Set err is %s ", err.Error())
+		APIResponse(c, err, nil)
+	}
 	res := CreateWalletRes{Address: address}
 
 	APIResponse(c, nil, res)
@@ -601,7 +621,26 @@ func Login(c *gin.Context) {
 	if ac.PassWD != lR.PassWD {
 		APIResponse(c, ErrPasswdErr, nil)
 	}
-
+	//var count int
+	//session := sessions.Default(c)
+	//v := session.Get("wallet")
+	//session.Options(sessions.Options{MaxAge: 3600 * 24})
+	//if v == nil {
+	//	count = 0
+	//} else {
+	//	count = v.(int)
+	//	count++
+	//}
+	//log.Info().Msgf("Wallet info is %d ", count)
+	//session.Set("wallet", count)
+	//err = session.Save()
+	//if err != nil {
+	//	APIResponse(c, err, nil)
+	//}
+	//c.JSON(200, gin.H{
+	//	"wallet-Session": count,
+	//})
+	db.UpDataLoginInfo(lR.Account)
 	APIResponse(c, nil, ac)
 }
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/lmxdawn/wallet/db"
 	"github.com/lmxdawn/wallet/engine"
 )
 
@@ -10,11 +11,18 @@ func AuthRequired() gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 
-		token := c.GetHeader("x-token")
+		token := c.GetHeader("Account")
 		if token == "" {
 			c.Abort()
 			APIResponse(c, ErrToken, nil)
 		}
+		if !db.CheckLoginInfo(token) {
+			c.Abort()
+			APIResponse(c, ErrLoginExpire, nil)
+		}
+		// 检验有效期
+		//session :=sessions.Default(c)
+		//session.
 
 	}
 

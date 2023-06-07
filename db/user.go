@@ -52,8 +52,18 @@ type Transfer struct {
 }
 
 type Account struct {
+	Account    string
 	PassWD     string   // 密码
 	WalletList []string // 对应的钱包地址列表
+}
+
+type LoginInfo struct {
+	Account   string
+	TimeStamp string
+}
+
+func (l LoginInfo) MarshalBinary() ([]byte, error) {
+	return json.Marshal(l)
 }
 
 func (a Account) MarshalBinary() ([]byte, error) {
@@ -208,7 +218,19 @@ func GetTransferFromDB(address string) (data []*Transfer) {
 }
 
 func UpDataAccountInfo(account, passwd string) (*Account, error) {
-	return nil, nil
+
+	ac := &Account{
+		Account:    account,
+		PassWD:     passwd,
+		WalletList: nil,
+	}
+	_, err := Rdb.HSet(context.Background(), AccountDB, account, ac).Result()
+	if err != nil {
+		log.Info().Msgf("GetAccountInfo get err is %s ", err.Error())
+		return nil, err
+	}
+
+	return ac, nil
 }
 
 func GetAccountInfo(account string) *Account {
@@ -225,4 +247,38 @@ func GetAccountInfo(account string) *Account {
 	}
 	return ac
 
+}
+
+func UpDataLoginInfo(account string) {
+	lg := &LoginInfo{
+		Account:   account,
+		TimeStamp: strconv.Itoa(int(time.Now().UnixMicro())),
+	}
+
+	_, err := Rdb.HSet(context.Background(), LoginDB, account, lg).Result()
+	if err != nil {
+		log.Info().Msgf("CheckLoginInfo to DB err is %s ", err.Error())
+	}
+	// 设置过期时间
+	Rdb.Expire(context.Background(), LoginDB+":"+account, time.Hour)
+}
+
+// CheckLoginInfo 检查登录状态
+func CheckLoginInfo(account string) bool {
+	//lg := &LoginInfo{
+	//	Account:   account,
+	//	TimeStamp: strconv.Itoa(int(time.Now().UnixMicro())),
+	//}
+
+	res, err := Rdb.HGet(context.Background(), LoginDB, account).Result()
+	if err != nil {
+		log.Info().Msgf("CheckLoginInfo from DB err is %s ", err.Error())
+		return false
+	}
+
+	log.Info().Msgf("CheckLoginInfo res is %v ", res)
+	if res == "" {
+		return false
+	}
+	return true
 }

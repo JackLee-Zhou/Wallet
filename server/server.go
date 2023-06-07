@@ -13,7 +13,7 @@ import (
 // Start 启动服务
 func Start(isSwag bool, configPath string) {
 	conf, err := config.NewConfig(configPath)
-
+	//store := cookie.NewStore([]byte("test"))
 	if err != nil || len(conf.Engines) == 0 {
 		panic("Failed to load configuration")
 	}
@@ -45,40 +45,42 @@ func Start(isSwag bool, configPath string) {
 	server.Use(gin.Logger())
 	server.Use(gin.Recovery())
 	server.Use(SetEngine(engines...))
-
-	auth := server.Group("/api")
+	//server.Use(AuthRequired())
+	//server.Use(sessions.Sessions("Session", store))
+	auth := server.Group("/", AuthRequired())
 	{
 		auth.POST("/createWallet", CreateWallet)
 		auth.POST("/delWallet", DelWallet)
 		auth.POST("/withdraw", Withdraw)
 		auth.POST("/collection", Collection)
 		auth.GET("/getTransactionReceipt", GetTransactionReceipt)
+		// TODO 发起一笔交易
+		auth.POST("/transaction", Transaction)
+
+		// 添加新币
+		auth.POST("/addNewCoin", AddNewCoin)
+
+		// 获取实时的 gas 费用 链上状态
+		auth.POST("/getLinkStatus", GetLinkStatus)
+		// 获取账户的余额信息
+		auth.POST("/getBalance", GetBalance)
+		// 添加网络
+		auth.POST("/addNetWork", AddNetWork)
+		// 获取钱包基础信息
+		auth.GET("/getWalletInfo", GetWalletInfo)
+
+		// 获取账户的活动信息
+		auth.GET("/getActivity", GetActivity)
+		auth.GET("/getHistoryTrans", GetHistoryTrans)
+
+		auth.POST("/checkTrans", CheckTrans)
+		auth.POST("/changSignType", ChangSignType)
+		auth.POST("/exportWallet", ExportWallet)
 	}
 	// 登录检测
 	server.POST("/login", Login)
 	server.POST("/register", Register)
-	// TODO 发起一笔交易
-	server.POST("/transaction", Transaction)
 
-	// 添加新币
-	server.POST("/addNewCoin", AddNewCoin)
-
-	// 获取实时的 gas 费用 链上状态
-	server.POST("/getLinkStatus", GetLinkStatus)
-	// 获取账户的余额信息
-	server.POST("/getBalance", GetBalance)
-	// 添加网络
-	server.POST("/addNetWork", AddNetWork)
-	// 获取钱包基础信息
-	server.GET("/getWalletInfo", GetWalletInfo)
-
-	// 获取账户的活动信息
-	server.GET("/getActivity", GetActivity)
-	server.GET("/getHistoryTrans", GetHistoryTrans)
-
-	server.POST("/checkTrans", CheckTrans)
-	server.POST("/changSignType", ChangSignType)
-	server.POST("/exportWallet", ExportWallet)
 	//if isSwag {
 	swagHandler := ginSwagger.WrapHandler(swaggerFiles.Handler)
 	server.GET("/swagger/*any", swagHandler)
