@@ -243,7 +243,36 @@ func AddNewCoin(c *gin.Context) {
 		HandleValidatorError(c, err)
 		return
 	}
-	err := engine.AddNewCoin(newCoin.CoinName, newCoin.ContractAddress)
+	usr := db.GetUserFromDB(newCoin.UserAddress)
+	if usr == nil {
+		APIResponse(c, ErrAccountErr, nil)
+		return
+	}
+	for _, v := range usr.UserAssets {
+		temp := v
+		if temp.ContractAddress == newCoin.ContractAddress {
+			APIResponse(c, ErrSame20Token, nil)
+			return
+		}
+	}
+	usr.UserAssets = append(usr.UserAssets, &db.Assets{
+		ContractAddress: newCoin.ContractAddress,
+		Symbol:          newCoin.CoinName,
+	})
+
+	// 更新用户数据
+	db.UpDataUserInfo(usr)
+	// 用户部分要更新 但是不再增加监听
+	if ok := db.UpDataCoinInfoToDB(newCoin.CoinName, newCoin.ContractAddress); ok {
+		APIResponse(c, ErrSame20Token, nil)
+		return
+	}
+	// 这个 AdNewCoin 是针对所有服务的 不是单一用户，会整个监听 这里应该判断重复的问题
+	// @doc 将这个结构打入 redis 中 添加的时候做一个判断
+	eng, err := engine.AddNewCoin(newCoin.CoinName, newCoin.ContractAddress)
+
+	// TODO 优化这种结构
+	c.Set(newCoin.Protocol+newCoin.CoinName, eng)
 	if err != nil {
 		APIResponse(c, err, nil)
 		return
@@ -308,6 +337,8 @@ func Transaction(c *gin.Context) {
 		APIResponse(c, ErrNoPremission, nil)
 		return
 	}
+
+	// TODO 优化这种处理结构
 	v, ok := c.Get(sT.Protocol + sT.CoinName)
 	if !ok {
 		HandleValidatorError(c, ErrNotData)

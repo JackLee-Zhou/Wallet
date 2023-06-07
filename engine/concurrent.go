@@ -95,9 +95,10 @@ func (c *ConCurrentEngine) blockLoop() {
 	c.createBlockWorker(blockWorkerOut)
 
 	// 批量创建交易worker
-	for i := uint64(0); i < 5; i++ {
-		c.createReceiptWorker()
-	}
+	// TODO 免费 API 不支持大量的请求
+	//for i := uint64(0); i < 5; i++ {
+	c.createReceiptWorker()
+	//}
 
 	c.scheduler.BlockSubmit(blockNumber)
 
@@ -181,7 +182,7 @@ func (c *ConCurrentEngine) createReceiptWorker() {
 			// 这里的 in 是怎么读出数据的 ?
 			transaction := <-in
 
-			// 查询交易的情况
+			// 查询交易的情况 这里查询交易情况处理了 20 币的情况
 			err := c.Worker.GetTransactionReceipt(&transaction)
 			if err != nil {
 				log.Info().Msgf("等待%d秒，收据信息无效, err: %v", c.Config.ReceiptAfterTime, err)
@@ -217,7 +218,7 @@ func (c *ConCurrentEngine) createReceiptWorker() {
 							break
 						}
 					}
-					log.Info().Msgf("交易完成：%v", transaction.Hash)
+					log.Info().Msgf(" %s 交易完成：%v", worker.token, transaction.Hash)
 					// 存入交易成功的元素
 					c.TransNotify.Store(transaction.Hash, struct{}{})
 					// 是否打入内存中
@@ -355,15 +356,16 @@ func (c *ConCurrentEngine) GetTransactionReceipt(hash string) (int, error) {
 
 // NewEngine 创建ETH
 func NewEngine(config config.EngineConfig) (*ConCurrentEngine, error) {
-	keyDB, err := db.NewKeyDB(config.File)
-	if err != nil {
-		return nil, err
-	}
+	//keyDB, err := db.NewKeyDB(config.File)
+	//if err != nil {
+	//	return nil, err
+	//}
 
-	var worker Worker
+	var iworker Worker
 	switch config.Protocol {
 	case "eth":
-		worker, err = NewEthWorker(config.Confirms, config.Contract, config.Rpc)
+		worker, err := NewEthWorker(config.Confirms, config.Contract, config.Rpc)
+		iworker = Worker(worker)
 		if err != nil {
 			return nil, err
 		}
@@ -374,16 +376,16 @@ func NewEngine(config config.EngineConfig) (*ConCurrentEngine, error) {
 	return &ConCurrentEngine{
 		//scheduler: scheduler.NewSimpleScheduler(), // 简单的任务调度器
 		scheduler: scheduler.NewQueueScheduler(), // 队列的任务调度器
-		Worker:    worker,
+		Worker:    iworker,
 		Config:    config,
 		Protocol:  config.Protocol,
 		CoinName:  config.CoinName,
-		DB:        keyDB,
-		http:      http,
+		//DB:        keyDB,
+		http: http,
 	}, nil
 }
 
-func AddNewCoin(coinName, contractAddress string) error {
+func AddNewCoin(coinName, contractAddress string) (*ConCurrentEngine, error) {
 
 	eng, err := NewEngine(config.EngineConfig{
 		CoinName:          coinName,
@@ -401,11 +403,11 @@ func AddNewCoin(coinName, contractAddress string) error {
 	})
 	if err != nil {
 		log.Info().Msgf("AddNewCoin err is %s ", err.Error())
-		return err
+		return nil, err
 	}
 	// 开启这个新协议的监听
 	go eng.Run()
-	return nil
+	return nil, nil
 }
 
 // CheckMulSign 检查是否开启多签 是则直接进行多签的逻辑

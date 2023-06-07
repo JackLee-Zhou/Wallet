@@ -14,6 +14,7 @@ const (
 	TransferDB = "Transfer"
 	AccountDB  = "Account"
 	LoginDB    = "Login"
+	CoinDB     = "Coin"
 )
 
 // init 数据库链接初始化

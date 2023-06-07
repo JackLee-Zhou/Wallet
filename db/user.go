@@ -152,7 +152,30 @@ func UpDataUserTransInfo(address, coinName string, trans []*types.Transaction) {
 	}
 }
 
-// CheckWalletIsInDB 检查这个钱包地址是否在数据库中
+// UpDataUserInfo 更新用户数据
+func UpDataUserInfo(usr *User) {
+	ok, err := Rdb.HExists(context.Background(), UserDB, usr.Address).Result()
+	if err != nil {
+		log.Info().Msgf("UpDataUserInfo HExists err is %s ", err.Error())
+		return
+	}
+	if ok {
+		_, err := Rdb.HDel(context.Background(), UserDB, usr.Address).Result()
+		if err != nil {
+			log.Info().Msgf("UpDataUserInfo HDel err is %s ", err.Error())
+			return
+		}
+	}
+
+	_, err = Rdb.HSet(context.Background(), UserDB, usr.Address, usr).Result()
+	if err != nil {
+		log.Info().Msgf("UpDataUserInfo HSet err is %s ", err.Error())
+		return
+	}
+
+}
+
+// CheckWalletIsInDB 检查这个钱包地址是否在数据库中 多签使用
 func CheckWalletIsInDB(address string) bool {
 	return true
 }
@@ -256,25 +279,30 @@ func UpDataLoginInfo(account string) {
 		TimeStamp: strconv.Itoa(int(time.Now().UnixMilli())),
 	}
 
-	_, err := Rdb.HSet(context.Background(), LoginDB, account, lg).Result()
+	// TODO 原子性
+	_, err := Rdb.HSetNX(context.Background(), LoginDB, account, lg).Result()
 	if err != nil {
 		log.Info().Msgf("CheckLoginInfo to DB err is %s ", err.Error())
 	}
 	// 设置过期时间
-	Rdb.Expire(context.Background(), LoginDB+":"+account, time.Hour)
+	isOK, err := Rdb.Expire(context.Background(), LoginDB+":"+account, time.Hour).Result()
+	if err != nil {
+		log.Info().Msgf("CheckLoginInfo  DB Expire err is %s ", err.Error())
+	}
+	log.Info().Msgf("CheckLoginInfo  DB Expire isOk %v ", isOK)
 }
 
 // CheckLoginInfo 检查登录状态
 func CheckLoginInfo(account string) bool {
 
-	res, err := Rdb.HGet(context.Background(), LoginDB, account).Result()
+	res, err := Rdb.HExists(context.Background(), LoginDB, account).Result()
 	if err != nil {
 		log.Info().Msgf("CheckLoginInfo from DB err is %s ", err.Error())
 		return false
 	}
 
 	log.Info().Msgf("CheckLoginInfo res is %v ", res)
-	if res == "" {
+	if !res {
 		return false
 	}
 	return true
