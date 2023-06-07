@@ -20,6 +20,7 @@ var (
 	ErrPasswdErr          = &Errno{Code: 10013, Message: "密码错误"}
 	ErrAccountErr         = &Errno{Code: 10014, Message: "账户错误"}
 	ErrLoginExpire        = &Errno{Code: 10015, Message: "登录超时"}
+	ErrNoPremission       = &Errno{Code: 10016, Message: "权限不允许"}
 )
 
 // Errno ...

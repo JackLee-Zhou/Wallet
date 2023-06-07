@@ -167,7 +167,7 @@ func (u *User) MulSignMode(to, coinName, num string) bool {
 func UpDateTransInfo(hex, from, to, value, coinName string) {
 
 	// 秒级时间戳
-	ts := &Transfer{Hex: hex, From: from, To: to, Value: value, CoinName: coinName, TimeStamp: strconv.Itoa(int(time.Now().UnixMicro()))}
+	ts := &Transfer{Hex: hex, From: from, To: to, Value: value, CoinName: coinName, TimeStamp: strconv.Itoa(int(time.Now().UnixMilli()))}
 
 	_, err := Rdb.HSet(context.Background(), TransferDB, hex, ts).Result()
 	if err != nil {
@@ -251,8 +251,9 @@ func GetAccountInfo(account string) *Account {
 
 func UpDataLoginInfo(account string) {
 	lg := &LoginInfo{
-		Account:   account,
-		TimeStamp: strconv.Itoa(int(time.Now().UnixMicro())),
+		Account: account,
+		// 毫秒级的时间戳
+		TimeStamp: strconv.Itoa(int(time.Now().UnixMilli())),
 	}
 
 	_, err := Rdb.HSet(context.Background(), LoginDB, account, lg).Result()
@@ -265,10 +266,6 @@ func UpDataLoginInfo(account string) {
 
 // CheckLoginInfo 检查登录状态
 func CheckLoginInfo(account string) bool {
-	//lg := &LoginInfo{
-	//	Account:   account,
-	//	TimeStamp: strconv.Itoa(int(time.Now().UnixMicro())),
-	//}
 
 	res, err := Rdb.HGet(context.Background(), LoginDB, account).Result()
 	if err != nil {

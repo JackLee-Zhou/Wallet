@@ -278,6 +278,8 @@ func GetActivity(c *gin.Context) {
 // @Summary 发起一笔交易
 // @Produce json
 func Transaction(c *gin.Context) {
+	account := c.GetHeader("Account")
+	find := false
 	//upgrader.Subprotocols = []string{c.GetHeader("Sec-WebSocket-Protocol")}
 	//ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	//
@@ -290,6 +292,20 @@ func Transaction(c *gin.Context) {
 	var res SendTransactionRes
 	if err := c.ShouldBindJSON(&sT); err != nil {
 		HandleValidatorError(c, err)
+		return
+	}
+	// 检查用户的账户中是否有这个钱包地址
+	ac := db.GetAccountInfo(account)
+	for _, v := range ac.WalletList {
+		temp := v
+		// 看钱包地址是否是这个人的
+		if sT.From == temp {
+			find = true
+			break
+		}
+	}
+	if !find {
+		APIResponse(c, ErrNoPremission, nil)
 		return
 	}
 	v, ok := c.Get(sT.Protocol + sT.CoinName)
@@ -305,13 +321,7 @@ func Transaction(c *gin.Context) {
 		return
 	}
 	// TODO 根据地址 数据库中查询获取到 privateKey
-	getRes, err := db.Rdb.HGet(context.Background(), db.UserDB, sT.From).Result()
-	if err != nil {
-		APIResponse(c, err, nil)
-	}
-	usr := db.User{}
-	json.Unmarshal([]byte(getRes), &usr)
-	//err = usr.UnmarshalBinary([]byte(getRes))
+	usr := db.GetUserFromDB(sT.From)
 	if err != nil {
 		APIResponse(c, err, nil)
 	}
@@ -446,7 +456,7 @@ func AddNetWork(c *gin.Context) {
 
 }
 
-// CheckTrans 检查交易是否成功
+// CheckTrans 检查交易是否成功 客户端应该轮询
 func CheckTrans(c *gin.Context) {
 	var cT CheckTransReq
 	if err := c.ShouldBindJSON(&cT); err != nil {
@@ -475,10 +485,12 @@ func CheckTrans(c *gin.Context) {
 
 // GetWalletInfo 获取钱包基础信息
 func GetWalletInfo(c *gin.Context) {
+	find := false
 	type walletInfo struct {
 		User  *db.User
 		Trans []*db.Transfer
 	}
+	account := c.GetHeader("Account")
 	info := &walletInfo{}
 	address, ok := c.GetQuery("Address")
 	if !ok {
@@ -486,6 +498,19 @@ func GetWalletInfo(c *gin.Context) {
 	}
 
 	usr := db.GetUserFromDB(address)
+	ac := db.GetAccountInfo(account)
+	for _, v := range ac.WalletList {
+		temp := v
+		// 看钱包地址是否是这个人的
+		if address == temp {
+			find = true
+			break
+		}
+	}
+	if !find {
+		APIResponse(c, ErrNoPremission, nil)
+		return
+	}
 	info.User = usr
 	info.Trans = append(info.Trans, db.GetTransferFromDB(address)...)
 
