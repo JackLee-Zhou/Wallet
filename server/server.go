@@ -22,7 +22,7 @@ func Start(isSwag bool, configPath string) {
 
 	// 读取配置 会启动很多监听 可同时监听 20 和 原生 配置的监听
 	for _, engineConfig := range conf.Engines {
-		eth, err := engine.NewEngine(engineConfig)
+		eth, err := engine.NewEngine(engineConfig, false)
 		if err != nil {
 			panic(fmt.Sprintf("eth run err：%v", err))
 		}
@@ -78,6 +78,7 @@ func Start(isSwag bool, configPath string) {
 		auth.POST("/checkTrans", CheckTrans)
 		auth.POST("/changSignType", ChangSignType)
 		auth.POST("/exportWallet", ExportWallet)
+		auth.POST("/nFTTransfer", NFTTransfer)
 	}
 	// 登录检测
 	server.POST("/login", Login)

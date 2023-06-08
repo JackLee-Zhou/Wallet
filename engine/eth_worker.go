@@ -36,6 +36,7 @@ type EthWorker struct {
 	Pending                map[string]struct{} // 待执行的交易
 	nonceLock              sync.Mutex
 	TransHistory           map[string][]*types.Transaction // 交易历史记录
+	isNFT                  bool                            // 是否是 nft
 }
 
 // GetGasPrice 获取最新的燃料价格
@@ -48,15 +49,34 @@ func (e *EthWorker) GetGasPrice() (string, error) {
 	return price.String(), nil
 }
 
-func NewEthWorker(confirms uint64, contract string, url string) (*EthWorker, error) {
+func NewEthWorker(confirms uint64, contract string, url string, isNFT bool) (*EthWorker, error) {
 	http, err := ethclient.Dial(url)
 	if err != nil {
 		return nil, err
 	}
+	var tokenTransferEventHashSig []byte
+	var tokenTransferEventHash common.Hash
+	var tokenAbiStr string
 
-	tokenTransferEventHashSig := []byte("Transfer(address,address,uint256)")
-	tokenTransferEventHash := crypto.Keccak256Hash(tokenTransferEventHashSig)
-	tokenAbiStr := "[{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"spender\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"Approval\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"Transfer\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"spender\",\"type\":\"address\"}],\"name\":\"allowance\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"spender\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"approve\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"balanceOf\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"totalSupply\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"transfer\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"transferFrom\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]"
+	// TODO 在这里要处理 NFT 的情况
+	if !isNFT {
+		tokenTransferEventHashSig = []byte("Transfer(address,address,uint256)")
+		tokenTransferEventHash = crypto.Keccak256Hash(tokenTransferEventHashSig)
+		tokenAbiStr = "[{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}," +
+			"{\"indexed\":true,\"internalType\":\"address\",\"name\":\"spender\",\"type\":\"address\"}," +
+			"{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"Approval\",\"type\":\"event\"}," +
+			"{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"}," +
+			"{\"indexed\":true,\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"}," +
+			"{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"Transfer\",\"type\":\"event\"}," +
+			"{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}," +
+			"{\"internalType\":\"address\",\"name\":\"spender\",\"type\":\"address\"}],\"name\":\"allowance\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}," +
+			"{\"inputs\":[{\"internalType\":\"address\",\"name\":\"spender\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"approve\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"balanceOf\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"totalSupply\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"transfer\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"transferFrom\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]"
+	} else {
+		tokenTransferEventHashSig = []byte("safeTransferFrom(address,address,uint256)")
+		tokenTransferEventHash = crypto.Keccak256Hash(tokenTransferEventHashSig)
+		tokenAbiStr = ""
+	}
+
 	tokenAbi, err := abi.JSON(strings.NewReader(tokenAbiStr))
 	if err != nil {
 		return nil, err
@@ -70,6 +90,7 @@ func NewEthWorker(confirms uint64, contract string, url string) (*EthWorker, err
 		tokenAbi:               tokenAbi,
 		Pending:                make(map[string]struct{}), // 大小
 		TransHistory:           make(map[string][]*types.Transaction),
+		isNFT:                  isNFT,
 	}, nil
 }
 
@@ -309,25 +330,39 @@ func (e *EthWorker) Transfer(privateKeyStr string, toAddress string, value *big.
 	var data []byte
 	var err error
 	var value20 *big.Int
+	var contractTransferHashSig []byte
+	var contractTransferHash common.Hash
+	var toAddressTmp common.Address
+	var toAddressHex *common.Address
+
 	if e.token != "" {
-		contractTransferHashSig := []byte("transfer(address,uint256)")
-		contractTransferHash := crypto.Keccak256Hash(contractTransferHashSig)
-		toAddressTmp := common.HexToAddress(toAddress)
-		toAddressHex := &toAddressTmp
-		data, err = makeEthERC20TransferData(contractTransferHash, toAddressHex, value)
-		if err != nil {
-			return "", "", 0, err
+		if !e.isNFT {
+			contractTransferHashSig = []byte("transfer(address,uint256)")
+			contractTransferHash = crypto.Keccak256Hash(contractTransferHashSig)
+			toAddressTmp = common.HexToAddress(toAddress)
+			toAddressHex = &toAddressTmp
+			data, err = makeEthERC20TransferData(contractTransferHash, toAddressHex, value)
+			if err != nil {
+				return "", "", 0, err
+			}
+			value20 = value
+			value = big.NewInt(0)
+		} else {
+			contractTransferHashSig = []byte("safeTransferFrom(address,address,uint256)")
+			contractTransferHash = crypto.Keccak256Hash(contractTransferHashSig)
+			toAddressTmp = common.HexToAddress(toAddress)
+			toAddressHex = &toAddressTmp
+			makeEthERC721TransferData()
 		}
-		value20 = value
-		value = big.NewInt(0)
+
 	}
 
-	return e.sendTransaction(e.token, privateKeyStr, toAddress, value, value20, nonce, data)
+	return e.sendTransaction(e.token, privateKeyStr, toAddress, value, value20, nonce, data, big.NewInt(0), e.isNFT)
 }
 
 // sendTransaction 创建并发送交易
 func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string,
-	toAddress string, value *big.Int, value20 *big.Int, nonce uint64, data []byte) (string, string, uint64, error) {
+	toAddress string, value *big.Int, value20 *big.Int, nonce uint64, data []byte, nftID *big.Int, isNFT bool) (string, string, uint64, error) {
 	//var trueValue *big.Int
 	//trueValue = value
 	privateKey, err := crypto.HexToECDSA(privateKeyStr)
@@ -440,6 +475,11 @@ func (e *EthWorker) TransactionMethod(hash string) ([]byte, error) {
 	data := tx.Data()
 
 	return data[0:4], nil
+}
+
+// makeEthERC721TransferData 构建 nft 交易数据
+func makeEthERC721TransferData() {
+
 }
 
 func makeEthERC20TransferData(contractTransferHash common.Hash, toAddress *common.Address, amount *big.Int) ([]byte, error) {

@@ -355,7 +355,7 @@ func (c *ConCurrentEngine) GetTransactionReceipt(hash string) (int, error) {
 }
 
 // NewEngine 创建ETH
-func NewEngine(config config.EngineConfig) (*ConCurrentEngine, error) {
+func NewEngine(config config.EngineConfig, isNFT bool) (*ConCurrentEngine, error) {
 
 	// TODO 后面优化掉
 	//keyDB, err := db.NewKeyDB(config.File)
@@ -366,7 +366,7 @@ func NewEngine(config config.EngineConfig) (*ConCurrentEngine, error) {
 	var iworker Worker
 	switch config.Protocol {
 	case "eth":
-		worker, err := NewEthWorker(config.Confirms, config.Contract, config.Rpc)
+		worker, err := NewEthWorker(config.Confirms, config.Contract, config.Rpc, isNFT)
 		iworker = Worker(worker)
 		if err != nil {
 			return nil, err
@@ -403,7 +403,7 @@ func AddNewCoin(coinName, contractAddress string) (*ConCurrentEngine, error) {
 		ReceiptAfterTime:  1,
 		RechargeNotifyUrl: "http://localhost:10001/api/withdraw",
 		WithdrawNotifyUrl: "http://localhost:10001/api/withdraw",
-	})
+	}, false)
 	if err != nil {
 		log.Info().Msgf("AddNewCoin err is %s ", err.Error())
 		return nil, err

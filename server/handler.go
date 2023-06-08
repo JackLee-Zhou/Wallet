@@ -236,7 +236,14 @@ func GetTransactionReceipt(c *gin.Context) {
 	APIResponse(c, nil, res)
 }
 
-// AddNewCoin 添加新币
+// AddNewCoin
+// @Tags 添加新币
+// @Summary 添加新币
+// @Produce json
+// @Security AuthRequired
+// @Param login body AddNewCoinReq true "参数"
+// @Success 200 {object} Response{data=}
+// @Router /AddNewCoin [post]
 func AddNewCoin(c *gin.Context) {
 	var newCoin AddNewCoinReq
 	if err := c.ShouldBindJSON(&newCoin); err != nil {
@@ -716,4 +723,9 @@ func Register(c *gin.Context) {
 		APIResponse(c, err, nil)
 	}
 	APIResponse(c, nil, account)
+}
+
+// NFTTransfer 721 nft 交易
+func NFTTransfer(c *gin.Context) {
+
 }
