@@ -9,7 +9,6 @@ import (
 	"github.com/lmxdawn/wallet/types"
 	"github.com/rs/zerolog/log"
 	"math/big"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -43,10 +42,10 @@ type ConCurrentEngine struct {
 	scheduler Scheduler
 	Worker    Worker
 	// 添加新币的时候要修改这个
-	Config      config.EngineConfig
-	Protocol    string
-	CoinName    string
-	DB          db.Database
+	Config   config.EngineConfig
+	Protocol string
+	CoinName string
+	//DB          db.Database
 	http        *client.HttpClient
 	TransNotify sync.Map
 }
@@ -54,7 +53,7 @@ type ConCurrentEngine struct {
 // Run 启动
 func (c *ConCurrentEngine) Run() {
 	// 关闭连接
-	defer c.DB.Close()
+	//defer c.DB.Close()
 	// 先重新获取一下最新的 BlockNum
 	num, err := c.Worker.GetNowBlockNum()
 	if err != nil {
@@ -63,8 +62,9 @@ func (c *ConCurrentEngine) Run() {
 	c.Config.BlockInit = num
 	// 监听区块
 	go c.blockLoop()
-	go c.collectionLoop()
+	//go c.collectionLoop()
 
+	log.Info().Msgf("%s Listen Start ", c.Config.CoinName)
 	select {}
 }
 
@@ -114,31 +114,31 @@ func (c *ConCurrentEngine) blockLoop() {
 }
 
 // collectionLoop 归集循环监听
-func (c *ConCurrentEngine) collectionLoop() {
-	n := new(big.Int)
-	collectionMax, ok := n.SetString(c.Config.CollectionMax, 10)
-	if !ok {
-		panic("setString: error")
-	}
-	// 配置大于0才去自动归集
-	if collectionMax.Cmp(big.NewInt(0)) > 0 {
-		// 启动归集
-		collectionWorkerOut := make(chan db.WalletItem)
-		c.createCollectionWorker(collectionWorkerOut)
-
-		// 启动归集发送worker
-		for i := uint64(0); i < c.Config.CollectionCount; i++ {
-			c.createCollectionSendWorker(collectionMax)
-		}
-
-		go func() {
-			for {
-				collectionSend := <-collectionWorkerOut
-				c.scheduler.CollectionSendSubmit(collectionSend)
-			}
-		}()
-	}
-}
+//func (c *ConCurrentEngine) collectionLoop() {
+//	n := new(big.Int)
+//	collectionMax, ok := n.SetString(c.Config.CollectionMax, 10)
+//	if !ok {
+//		panic("setString: error")
+//	}
+//	// 配置大于0才去自动归集
+//	if collectionMax.Cmp(big.NewInt(0)) > 0 {
+//		// 启动归集
+//		collectionWorkerOut := make(chan db.WalletItem)
+//		c.createCollectionWorker(collectionWorkerOut)
+//
+//		// 启动归集发送worker
+//		for i := uint64(0); i < c.Config.CollectionCount; i++ {
+//			c.createCollectionSendWorker(collectionMax)
+//		}
+//
+//		go func() {
+//			for {
+//				collectionSend := <-collectionWorkerOut
+//				c.scheduler.CollectionSendSubmit(collectionSend)
+//			}
+//		}()
+//	}
+//}
 
 // createBlockWorker 获取最新区块信息
 func (c *ConCurrentEngine) createBlockWorker(out chan types.Transaction) {
@@ -157,7 +157,7 @@ func (c *ConCurrentEngine) createBlockWorker(out chan types.Transaction) {
 				c.scheduler.BlockSubmit(num)
 				continue
 			}
-			err = c.DB.Put("block_number", strconv.FormatUint(blockNum, 10))
+			//err = c.DB.Put("block_number", strconv.FormatUint(blockNum, 10))
 			if err != nil {
 				c.scheduler.BlockSubmit(num)
 			} else {
@@ -237,13 +237,13 @@ func (c *ConCurrentEngine) createCollectionWorker(out chan db.WalletItem) {
 	go func() {
 		for {
 			<-time.After(time.Duration(c.Config.CollectionAfterTime) * time.Second)
-			list, err := c.DB.ListWallet(c.Config.WalletPrefix)
-			if err != nil {
-				continue
-			}
-			for _, item := range list {
-				out <- item
-			}
+			//list, err := c.DB.ListWallet(c.Config.WalletPrefix)
+			//if err != nil {
+			//	continue
+			//}
+			//for _, item := range list {
+			//	out <- item
+			//}
 		}
 	}()
 }
@@ -287,17 +287,17 @@ func (c ConCurrentEngine) collection(address, privateKey string, max *big.Int) (
 func (c *ConCurrentEngine) Collection(address string, max *big.Int) (*big.Int, error) {
 
 	// 查询地址是否存在
-	privateKey, err := c.DB.Get(c.Config.WalletPrefix + address)
-	if err != nil {
-		return nil, err
-	}
+	////privateKey, err := c.DB.Get(c.Config.WalletPrefix + address)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//balance, err := c.collection(address, privateKey, max)
+	//if err != nil {
+	//	return nil, err
+	//}
 
-	balance, err := c.collection(address, privateKey, max)
-	if err != nil {
-		return nil, err
-	}
-
-	return balance, nil
+	return nil, nil
 }
 
 // CreateWallet 创建钱包
@@ -313,17 +313,17 @@ func (c *ConCurrentEngine) CreateWallet() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_ = c.DB.Put(c.Config.WalletPrefix+wallet.Address, wallet.PrivateKey)
+	//_ = c.DB.Put(c.Config.WalletPrefix+wallet.Address, wallet.PrivateKey)
 	log.Info().Msgf("创建钱包成功，地址：%v，私钥：%v", wallet.Address, wallet.PrivateKey)
 	return wallet.Address, nil
 }
 
 // DeleteWallet 删除钱包
 func (c *ConCurrentEngine) DeleteWallet(address string) error {
-	err := c.DB.Delete(c.Config.WalletPrefix + address)
-	if err != nil {
-		return err
-	}
+	//err := c.DB.Delete(c.Config.WalletPrefix + address)
+	//if err != nil {
+	//	return err
+	//}
 	return nil
 }
 
@@ -334,7 +334,7 @@ func (c *ConCurrentEngine) Withdraw(orderId string, toAddress string, value int6
 	if err != nil {
 		return "", err
 	}
-	_ = c.DB.Put(c.Config.HashPrefix+hash, orderId)
+	//_ = c.DB.Put(c.Config.HashPrefix+hash, orderId)
 	return hash, nil
 }
 
@@ -356,6 +356,8 @@ func (c *ConCurrentEngine) GetTransactionReceipt(hash string) (int, error) {
 
 // NewEngine 创建ETH
 func NewEngine(config config.EngineConfig) (*ConCurrentEngine, error) {
+
+	// TODO 后面优化掉
 	//keyDB, err := db.NewKeyDB(config.File)
 	//if err != nil {
 	//	return nil, err
@@ -388,10 +390,11 @@ func NewEngine(config config.EngineConfig) (*ConCurrentEngine, error) {
 func AddNewCoin(coinName, contractAddress string) (*ConCurrentEngine, error) {
 
 	eng, err := NewEngine(config.EngineConfig{
-		CoinName:          coinName,
-		Contract:          contractAddress,
-		Protocol:          "eth",
-		File:              "data/eth",
+		CoinName: coinName,
+		Contract: contractAddress,
+		Protocol: "eth",
+		Rpc:      "https://endpoints.omniatech.io/v1/matic/mumbai/public",
+		//File:              "data/" + coinName,
 		WalletPrefix:      "wallet-",
 		HashPrefix:        "hash-",
 		BlockInit:         0,
@@ -407,7 +410,7 @@ func AddNewCoin(coinName, contractAddress string) (*ConCurrentEngine, error) {
 	}
 	// 开启这个新协议的监听
 	go eng.Run()
-	return nil, nil
+	return eng, nil
 }
 
 // CheckMulSign 检查是否开启多签 是则直接进行多签的逻辑

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/lmxdawn/wallet/config"
-	"github.com/lmxdawn/wallet/db"
 	"github.com/lmxdawn/wallet/engine"
 	"github.com/rs/zerolog/log"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -30,9 +29,6 @@ func Start(isSwag bool, configPath string) {
 		engines = append(engines, eth)
 	}
 
-	//TODO 这里开始启动除开配置中的 20 Token 监听
-	start20TokenListen()
-
 	// 启动监听器
 	for _, currentEngine := range engines {
 		go currentEngine.Run()
@@ -44,11 +40,13 @@ func Start(isSwag bool, configPath string) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	server := gin.Default()
-
+	//TODO 这里开始启动除开配置中的 20 Token 监听
+	//start20TokenListen(server.)
 	// 中间件
 	server.Use(gin.Logger())
 	server.Use(gin.Recovery())
 	server.Use(SetEngine(engines...))
+	server.Use(start20Token())
 	//server.Use(AuthRequired())
 	//server.Use(sessions.Sessions("Session", store))
 	auth := server.Group("/", AuthRequired())
@@ -97,11 +95,4 @@ func Start(isSwag bool, configPath string) {
 
 	log.Info().Msgf("start success")
 
-}
-
-func start20TokenListen() {
-	tokens := db.GetAll20TokenFromDB()
-	for _, v := range tokens {
-
-	}
 }

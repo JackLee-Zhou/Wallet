@@ -248,6 +248,7 @@ func AddNewCoin(c *gin.Context) {
 		APIResponse(c, ErrAccountErr, nil)
 		return
 	}
+	// 先看 usr 中是否存在
 	for _, v := range usr.UserAssets {
 		temp := v
 		if temp.ContractAddress == newCoin.ContractAddress {
@@ -260,13 +261,15 @@ func AddNewCoin(c *gin.Context) {
 		Symbol:          newCoin.CoinName,
 	})
 
-	// 更新用户数据
-	db.UpDataUserInfo(usr)
-	// 用户部分要更新 但是不再增加监听
-	if ok := db.UpDataCoinInfoToDB(newCoin.CoinName, newCoin.ContractAddress); ok {
+	// 用户部分要更新 但是不再增加监听 先添加监听 再加用户数据
+	if ok := db.UpDataCoinInfoToDB(newCoin.CoinName, newCoin.ContractAddress); !ok {
 		APIResponse(c, ErrSame20Token, nil)
 		return
 	}
+
+	// 更新用户数据
+	db.UpDataUserInfo(usr)
+
 	// 这个 AdNewCoin 是针对所有服务的 不是单一用户，会整个监听 这里应该判断重复的问题
 	// @doc 将这个结构打入 redis 中 添加的时候做一个判断
 	eng, err := engine.AddNewCoin(newCoin.CoinName, newCoin.ContractAddress)

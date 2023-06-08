@@ -354,7 +354,8 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 	}
 
 	var gasLimit uint64
-	gasLimit = uint64(21000) // in units
+	//gasLimit = uint64(21000) // 在非合约中的转账 21000 是够的 但是在合约中 这个限制太小
+	gasLimit = uint64(200000) //
 	gasPrice, err := e.http.SuggestGasPrice(context.Background())
 	if err != nil {
 		return "", "", 0, err

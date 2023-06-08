@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lmxdawn/wallet/db"
 	"github.com/lmxdawn/wallet/engine"
+	"github.com/rs/zerolog/log"
 )
 
 // AuthRequired 认证中间件
@@ -39,5 +40,17 @@ func SetEngine(engines ...*engine.ConCurrentEngine) gin.HandlerFunc {
 			c.Set(currentEngine.Config.Rpc, currentEngine)
 		}
 	}
+}
 
+func start20Token() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokens := db.GetAll20TokenFromDB()
+		for _, v := range tokens {
+			eng, err := engine.AddNewCoin(v.CoinName, v.ContractAddress)
+			if err != nil {
+				log.Error().Msgf("start20TokenListen coinName is  %s err is %s ", v.CoinName, err.Error())
+			}
+			c.Set(v.Protocol+v.CoinName, eng)
+		}
+	}
 }

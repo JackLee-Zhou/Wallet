@@ -56,7 +56,7 @@ func UpDataCoinInfoToDB(coinName, contractAddress string) bool {
 		return false
 	}
 
-	if !exit {
+	if exit {
 		log.Info().Msgf("UpDataCoinInfoToDB has same ContractAddress is %s ", contractAddress)
 		return false
 	}
