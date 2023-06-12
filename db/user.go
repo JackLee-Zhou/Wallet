@@ -187,7 +187,12 @@ func UpDataUserInfo(usr *User) error {
 
 // CheckWalletIsInDB 检查这个钱包地址是否在数据库中 多签使用
 func CheckWalletIsInDB(address string) bool {
-	return true
+	ok, err := Rdb.HExists(context.Background(), UserDB, address).Result()
+	if err != nil {
+		log.Info().Msgf("CheckWalletIsInDB err is %s ", err.Error())
+		return false
+	}
+	return ok
 }
 
 // MulSignMode 多签模式
@@ -234,6 +239,7 @@ func GetTransferFromDB(address string) (data []*Transfer) {
 			continue
 		}
 
+		// 筛选出 From 和 to 符合条件的
 		if temp.From != address && temp.To != address {
 			continue
 		}

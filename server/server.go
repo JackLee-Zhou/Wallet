@@ -13,7 +13,8 @@ import (
 // Start 启动服务
 func Start(isSwag bool, configPath string) {
 	conf, err := config.NewConfig(configPath)
-	//store := cookie.NewStore([]byte("test"))
+	CoinInit()
+	Init()
 	if err != nil || len(conf.Engines) == 0 {
 		panic("Failed to load configuration")
 	}
@@ -30,9 +31,9 @@ func Start(isSwag bool, configPath string) {
 	}
 
 	// 启动监听器
-	for _, currentEngine := range engines {
-		go currentEngine.Run()
-	}
+	//for _, currentEngine := range engines {
+	//	go currentEngine.Run()
+	//}
 
 	if isSwag {
 		gin.SetMode(gin.DebugMode)
@@ -49,7 +50,7 @@ func Start(isSwag bool, configPath string) {
 	// 中间件
 	server.Use(gin.Logger())
 	server.Use(gin.Recovery())
-	//server.Use(SetEngine(engines...))
+	server.Use(SetEngine(engines...))
 	//server.Use(start20Token())
 	//server.Use(AuthRequired())
 	//server.Use(sessions.Sessions("Session", store))

@@ -86,6 +86,13 @@ type CheckTransReq struct {
 	TxHash   string `json:"txHash"  binding:"required"`  // 交易Hash
 }
 
+// CheckTransResp 检查交易是否成功回执
+type CheckTransResp struct {
+	TxHash  string `json:"txHash"`  // 交易Hash
+	Status  int    `json:"status"`  // 交易状态 0 失败 1 等到确认 2 成功
+	Message string `json:"message"` // 交易状态描述
+}
+
 // ChangSignTypeReq 改变签名方式
 type ChangSignTypeReq struct {
 	WalletAddress string   `json:"walletAddress" binding:"required"` // 需要改变的钱包地址

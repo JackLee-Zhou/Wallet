@@ -197,7 +197,7 @@ func AddNewCoin(c *gin.Context) {
 	// 这个 AdNewCoin 是针对所有服务的 不是单一用户，会整个监听 这里应该判断重复的问题
 	// @doc 将这个结构打入 redis 中 添加的时候做一个判断
 	eng, err := engine.AddNewCoin(newCoin.CoinName, newCoin.ContractAddress)
-
+	AddCoin(newCoin.CoinName, newCoin.ContractAddress, false)
 	// TODO 优化这种结构
 	c.Set(newCoin.Protocol+newCoin.CoinName, eng)
 	if err != nil {
@@ -234,8 +234,8 @@ func GetActivity(c *gin.Context) {
 // @Summary 发起一笔交易
 // @Produce json
 func Transaction(c *gin.Context) {
-	account := c.GetHeader("Account")
-	find := false
+	//account := c.GetHeader("Account")
+	//find := false
 	var sT SendTransaction
 	var res SendTransactionRes
 	if err := c.ShouldBindJSON(&sT); err != nil {
@@ -243,19 +243,19 @@ func Transaction(c *gin.Context) {
 		return
 	}
 	// 检查用户的账户中是否有这个钱包地址
-	ac := db.GetAccountInfo(account)
-	for _, v := range ac.WalletList {
-		temp := v
-		// 看钱包地址是否是这个人的
-		if sT.From == temp {
-			find = true
-			break
-		}
-	}
-	if !find {
-		APIResponse(c, ErrNoPremission, nil)
-		return
-	}
+	//ac := db.GetAccountInfo(account)
+	//for _, v := range ac.WalletList {
+	//	temp := v
+	//	// 看钱包地址是否是这个人的
+	//	if sT.From == temp {
+	//		find = true
+	//		break
+	//	}
+	//}
+	//if !find {
+	//	APIResponse(c, ErrNoPremission, nil)
+	//	return
+	//}
 
 	// TODO 优化这种处理结构
 	v, ok := c.Get(sT.Protocol + sT.CoinName)
@@ -274,6 +274,7 @@ func Transaction(c *gin.Context) {
 	usr := db.GetUserFromDB(sT.From)
 	if err != nil {
 		APIResponse(c, err, nil)
+		return
 	}
 	// TODO 检查是否是多签 若是则走多签的流程
 	if usr.SingType != db.SingerSign {
@@ -379,20 +380,50 @@ func CheckTrans(c *gin.Context) {
 		HandleValidatorError(c, ErrNotData)
 		return
 	}
+	cTR := &CheckTransResp{}
+	cTR.TxHash = cT.TxHash
 	currentEngine := v.(*engine.ConCurrentEngine)
 	if _, ok := currentEngine.TransNotify.Load(cT.TxHash); !ok {
-		APIResponse(c, ErrNoSuccess, struct {
-			isOk bool
-		}{
-			isOk: false,
-		})
+		cTR.Message = "pending"
+		cTR.Status = 1
+		APIResponse(c, ErrNoSuccess, cTR)
 		return
 	}
-	APIResponse(c, nil, struct {
-		isOk bool
-	}{
-		isOk: true,
-	})
+
+	// 处理 NFT 和本地未存储上的交易结果 直接去链上查
+	response, err := http.Get("https://api-testnet.polygonscan.com/api?" +
+		"module=transaction&action=gettxreceiptstatus&txhash=" + cT.TxHash + "&apikey=432F174RDZHNVM81M4JT8UJAWFW87DKUBV")
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+
+	var lR LinkTransactionRes
+	err = json.Unmarshal(body, &lR)
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+
+	log.Info().Msgf("Status is %+v ", lR)
+	if lR.Status == "0" {
+		cTR.Message = "success"
+		cTR.Status = 2
+		APIResponse(c, nil, cTR)
+		return
+	} else {
+		cTR.Message = "fail"
+		cTR.Status = 0
+		APIResponse(c, nil, cTR)
+		return
+	}
+
 	return
 }
 

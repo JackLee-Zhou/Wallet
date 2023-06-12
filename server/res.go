@@ -72,6 +72,15 @@ type History struct {
 	Message string        `json:"message"`
 	Result  []*HistoryRes `json:"result"`
 }
+
+type LinkTransactionRes struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	Result  struct {
+		Status string `json:"status"`
+	} `json:"result"`
+}
+
 type HistoryRes struct {
 	BlockNumber       string `json:"blockNumber"`
 	TimeStamp         string `json:"timeStamp"`

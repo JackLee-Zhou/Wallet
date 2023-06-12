@@ -22,6 +22,9 @@ type MulSignCounter struct {
 	Lock    sync.Locker
 }
 
+// PendingList 未完成的交易列表
+var PendingList *sync.Map
+
 var signCounter *MulSignCounter
 
 //var MulSignCounter int32
@@ -143,6 +146,7 @@ func (e *EthWorker) GetTransaction(num uint64) ([]types.Transaction, uint64, err
 	toBlock := num + 100
 	// 传入的num为0，表示最新块
 	if num == 0 {
+		// 表示从创世区块开始遍历
 		toBlock = nowBlockNumber
 	} else if toBlock > nowBlockNumber {
 		toBlock = nowBlockNumber
@@ -446,13 +450,21 @@ func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string
 	e.Pending[signTx.Hash().Hex()] = struct{}{}
 
 	// 要落地
+	//ts := &types.Transaction{
+	//	Hash: tx.Hash().String(),
+	//	From: fromAddress.String(),
+	//	To:   txData.To.String(),
+	//	//Value:  trueValue,
+	//	Status: uint(0),
+	//}
 	//e.TransHistory[fromAddress.String()] = append(e.TransHistory[fromAddress.String()], &types.Transaction{
-	//	Hash:   tx.Hash().String(),
-	//	From:   fromAddress.String(),
-	//	To:     txData.To.String(),
-	//	Value:  trueValue,
+	//	Hash: tx.Hash().String(),
+	//	From: fromAddress.String(),
+	//	To:   txData.To.String(),
+	//	//Value:  trueValue,
 	//	Status: uint(0),
 	//})
+	//PendingList.Store(ts.Hash, ts)
 
 	return fromAddress.Hex(), signTx.Hash().Hex(), nonce, nil
 }

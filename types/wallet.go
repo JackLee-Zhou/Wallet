@@ -16,4 +16,5 @@ type Transaction struct {
 	To          string   // 接收者
 	Value       *big.Int // 交易数量
 	Status      uint     // 状态（0：未完成，1：已完成）
+	HasCheck    bool     // 是否已经检查过`
 }

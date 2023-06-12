@@ -117,13 +117,19 @@ func send721Transaction(contractAddress string, privateKeyStr string, data []byt
 	}
 
 	txData := &ethTypes.DynamicFeeTx{
-		Nonce:     nonce,
-		To:        toAddressHex,
-		Gas:       203445959160938,
-		GasFeeCap: gasPrice.Mul(gasPrice, big.NewInt(2)),
+		Nonce: nonce,
+		To:    toAddressHex,
+		// gas 单位上限
+		Gas: gasLimit * 2,
+		// 设置的最高交易费用
+		GasFeeCap: gasPrice.Mul(gasPrice, big.NewInt(3)),
 		GasTipCap: gasTip,
 		Data:      data,
+		// (gasFeeCap+GasTipCap)*Gas = Transaction Fee
 	}
+	tips := txData.GasFeeCap.Add(txData.GasFeeCap, txData.GasTipCap)
+	log.Info().Msgf("tips is %s ", tips.String())
+	log.Info().Msgf("gasFee is %s ", tips.Mul(tips, big.NewInt(int64(txData.Gas))).String())
 	log.Info().Msgf("txData is %+v ", txData)
 	tx := ethTypes.NewTx(txData)
 

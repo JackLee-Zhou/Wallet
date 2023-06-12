@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/lmxdawn/wallet/db"
 	"github.com/rs/zerolog/log"
 )
@@ -21,7 +22,9 @@ type ListenCoinList struct {
 
 var CoinList *ListenCoinList
 
-func init() {
+var ListenHttp *ethclient.Client
+
+func CoinInit() {
 	CoinList = &ListenCoinList{
 		Mapping: make(map[string]*Coin),
 	}
@@ -37,7 +40,14 @@ func init() {
 		temp := v
 		takeCoinListen(temp)
 	}
-
+	// TODO 取消硬编码
+	iListenHttp, err := ethclient.Dial("https://polygon-mumbai.blockpi.network/v1/rpc/public")
+	if err != nil {
+		log.Fatal().Msgf("engineServer init err is %s ", err.Error())
+		return
+	}
+	ListenHttp = iListenHttp
+	log.Info().Msgf("engineServer init success ")
 }
 
 // AddCoin 添加代币 进行过滤监听
