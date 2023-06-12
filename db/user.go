@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/lmxdawn/wallet/types"
 	"github.com/rs/zerolog/log"
 	"math/big"
@@ -24,7 +25,13 @@ type NetWork struct {
 	ChainID     uint32
 }
 
-type Assets struct {
+// NFTAssets NFT 资产
+type NFTAssets struct {
+	ContractAddress string // 合约地址
+	TokenID         string // NFT ID
+}
+
+type CoinAssets struct {
 	ContractAddress string               // 资产合约地址，为空表示主币
 	Symbol          string               // 资产符号
 	Num             *big.Int             // 拥有的数量
@@ -32,14 +39,15 @@ type Assets struct {
 }
 
 type User struct {
-	Address        string     // 用户钱包地址
-	PrivateKey     string     // 用户私钥
-	PublicKey      string     // 用户公钥
-	SingType       int32      // 钱包签名方式 0 单签  1: 2/3 多签 2: 3/5 多签
-	SignGroup      []string   // 多签地址
-	CurrentNetWork *NetWork   // 用户当前所处的网络
-	NetWorks       []*NetWork // 用户添加的网络地址
-	UserAssets     []*Assets  // 用户资产数据
+	Address        string        // 用户钱包地址
+	PrivateKey     string        // 用户私钥
+	PublicKey      string        // 用户公钥
+	SingType       int32         // 钱包签名方式 0 单签  1: 2/3 多签 2: 3/5 多签
+	SignGroup      []string      // 多签地址
+	CurrentNetWork *NetWork      // 用户当前所处的网络
+	NetWorks       []*NetWork    // 用户添加的网络地址
+	UserAssets     []*CoinAssets // 用户资产数据
+	NFTAssets      []*NFTAssets  // 用户 NFT 资产数据
 }
 
 type Transfer struct {
@@ -93,16 +101,17 @@ func (c User) UnmarshalBinary(data []byte) error {
 // NewWalletUser 新建一个钱包用戶
 func NewWalletUser(address, privateKey, publicKey string) *User {
 	net := []*NetWork{}
-	asset := []*Assets{}
+	asset := []*CoinAssets{}
 	trans := []*types.Transaction{}
 	singGroup := []string{}
+	nft := []*NFTAssets{}
 	// 设置默认网络
 	currentNetWork := &NetWork{
 		NetWorkName: "Polygon",
 		RpcUrl:      "https://endpoints.omniatech.io/v1/matic/mumbai/public",
 		ChainID:     80001,
 	}
-	defaultAsset := &Assets{
+	defaultAsset := &CoinAssets{
 		ContractAddress: "",
 		Symbol:          "MATIC",
 		Num:             big.NewInt(0),
@@ -117,6 +126,7 @@ func NewWalletUser(address, privateKey, publicKey string) *User {
 		NetWorks:       net,
 		SignGroup:      singGroup,
 		UserAssets:     asset,
+		NFTAssets:      nft,
 	}
 	user.NetWorks = append(user.NetWorks, currentNetWork)
 	user.UserAssets = append(user.UserAssets, defaultAsset)
@@ -153,26 +163,26 @@ func UpDataUserTransInfo(address, coinName string, trans []*types.Transaction) {
 }
 
 // UpDataUserInfo 更新用户数据
-func UpDataUserInfo(usr *User) {
+func UpDataUserInfo(usr *User) error {
 	ok, err := Rdb.HExists(context.Background(), UserDB, usr.Address).Result()
 	if err != nil {
 		log.Info().Msgf("UpDataUserInfo HExists err is %s ", err.Error())
-		return
+		return err
 	}
 	if ok {
 		_, err := Rdb.HDel(context.Background(), UserDB, usr.Address).Result()
 		if err != nil {
 			log.Info().Msgf("UpDataUserInfo HDel err is %s ", err.Error())
-			return
+			return err
 		}
 	}
 
 	_, err = Rdb.HSet(context.Background(), UserDB, usr.Address, usr).Result()
 	if err != nil {
 		log.Info().Msgf("UpDataUserInfo HSet err is %s ", err.Error())
-		return
+		return err
 	}
-
+	return nil
 }
 
 // CheckWalletIsInDB 检查这个钱包地址是否在数据库中 多签使用
@@ -306,4 +316,22 @@ func CheckLoginInfo(account string) bool {
 		return false
 	}
 	return true
+}
+
+// ImportNFTToDB 导入NFT数据到数据库
+func (usr *User) ImportNFTToDB(contractAddress, tokenID string) error {
+	for _, v := range usr.NFTAssets {
+		temp := v
+		if temp.ContractAddress == contractAddress && temp.TokenID == tokenID {
+			log.Info().Msgf("ImportNFTToDB NFT is already in DB ")
+			return errors.New("ImportNFTToDB NFT is already in DB")
+		}
+	}
+	usr.NFTAssets = append(usr.NFTAssets, &NFTAssets{
+		contractAddress,
+		tokenID,
+	})
+
+	err := UpDataUserInfo(usr)
+	return err
 }

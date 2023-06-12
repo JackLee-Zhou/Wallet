@@ -115,89 +115,6 @@ func DelWallet(c *gin.Context) {
 	APIResponse(c, nil, nil)
 }
 
-// Withdraw ...
-// @Tags 钱包
-// @Summary 提现
-// @Produce json
-// @Security ApiKeyAuth
-// @Param login body WithdrawReq true "参数"
-// @Success 200 {object} Response{data=server.WithdrawRes}
-// @Router /api/withdraw [post]
-func Withdraw(c *gin.Context) {
-
-	var q WithdrawReq
-
-	if err := c.ShouldBindJSON(&q); err != nil {
-		HandleValidatorError(c, err)
-		return
-	}
-
-	v, ok := c.Get(q.Protocol + q.CoinName)
-	if !ok {
-		APIResponse(c, ErrEngine, nil)
-		return
-	}
-
-	currentEngine := v.(*engine.ConCurrentEngine)
-
-	q.Address = common.HexToAddress(q.Address).Hex()
-
-	hash, err := currentEngine.Withdraw(q.OrderId, q.Address, q.Value)
-	if err != nil {
-		APIResponse(c, err, nil)
-		return
-	}
-
-	res := WithdrawRes{Hash: hash}
-
-	APIResponse(c, nil, res)
-}
-
-// Collection ...
-// @Tags 归集某个地址
-// @Summary 归集
-// @Produce json
-// @Security ApiKeyAuth
-// @Param login body CollectionReq true "参数"
-// @Success 200 {object} Response{data=server.CollectionRes}
-// @Router /api/collection [post]
-func Collection(c *gin.Context) {
-
-	var q CollectionReq
-
-	if err := c.ShouldBindJSON(&q); err != nil {
-		HandleValidatorError(c, err)
-		return
-	}
-
-	v, ok := c.Get(q.Protocol + q.CoinName)
-	if !ok {
-		APIResponse(c, ErrEngine, nil)
-		return
-	}
-
-	currentEngine := v.(*engine.ConCurrentEngine)
-
-	n := new(big.Int)
-	max, ok := n.SetString(q.Max, 10)
-	if !ok {
-		APIResponse(c, InternalServerError, nil)
-		return
-	}
-
-	q.Address = common.HexToAddress(q.Address).Hex()
-
-	balance, err := currentEngine.Collection(q.Address, max)
-	if err != nil {
-		APIResponse(c, err, nil)
-		return
-	}
-
-	res := CollectionRes{Balance: balance.String()}
-
-	APIResponse(c, nil, res)
-}
-
 // GetTransactionReceipt ...
 // @Tags 钱包
 // @Summary 获取交易结果
@@ -263,7 +180,7 @@ func AddNewCoin(c *gin.Context) {
 			return
 		}
 	}
-	usr.UserAssets = append(usr.UserAssets, &db.Assets{
+	usr.UserAssets = append(usr.UserAssets, &db.CoinAssets{
 		ContractAddress: newCoin.ContractAddress,
 		Symbol:          newCoin.CoinName,
 	})
@@ -319,14 +236,6 @@ func GetActivity(c *gin.Context) {
 func Transaction(c *gin.Context) {
 	account := c.GetHeader("Account")
 	find := false
-	//upgrader.Subprotocols = []string{c.GetHeader("Sec-WebSocket-Protocol")}
-	//ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-	//
-	//if err != nil {
-	//	log.Info().Msgf("Ws UpGrader err is %s", err.Error())
-	//	APIResponse(c, err, nil)
-	//	return
-	//}
 	var sT SendTransaction
 	var res SendTransactionRes
 	if err := c.ShouldBindJSON(&sT); err != nil {
@@ -373,47 +282,14 @@ func Transaction(c *gin.Context) {
 
 	// 后端签名
 	// 这里 返回的仅是放到了交易池里面等到被执行，并没有实际的被真正的执行 还是处于 pending 状态
-	fromHex, signHex, nonce, err := currentEngine.Worker.Transfer(usr.PrivateKey, sT.To, big.NewInt(int64(num)), 0)
+	fromHex, signHex, nonce, err := currentEngine.Worker.Transfer(usr.PrivateKey, sT.From, sT.To, big.NewInt(int64(num)), 0)
 	if err != nil {
 		APIResponse(c, err, nil)
 		return
 	}
-
-	// 这里操作数据库 落地存储
-	//worker := currentEngine.Worker.(*engine.EthWorker)
-	//trans := worker.TransHistory[usr.Address]
-	//for i := 0; i < len(usr.UserAssets); i++ {
-	//	if sT.CoinName == usr.UserAssets[0].Symbol {
-	//		usr.UserAssets[0].Trans = trans
-	//		break
-	//	}
-	//}
-	//_, err = db.Rdb.HDel(context.Background(), db.UserDB, usr.Address).Result()
-	//if err != nil {
-	//	log.Info().Msgf("Trans to DB Del err is %s ", err.Error())
-	//}
-	//_, err = db.Rdb.HSet(context.Background(), db.UserDB, usr.Address, usr).Result()
-	//if err != nil {
-	//	log.Info().Msgf("Trans to DB err is %s ", err.Error())
-	//}
-	//log.Info().Msgf("data is %v", data)
 	res.FromHex = fromHex
 	res.SignHax = signHex
 	res.Nonce = nonce
-	//ws, err = upgrader.Upgrade(c.Writer, c.Request, nil)
-	//if err != nil {
-	//	log.Info().Msgf("Ws UpGrader err is ", err.Error())
-	//	APIResponse(c, err, nil)
-	//	return
-	//}
-	//defer ws.Close()
-
-	//data, _ := json.Marshal(res)
-	//err = ws.WriteMessage(200, data)
-	//if err != nil {
-	//	log.Info().Msgf("ws WriteMessage data err is %s", err.Error())
-	//	return
-	//}
 	go APIResponse(c, nil, res)
 
 	log.Info().Msgf("执行成功")
@@ -432,18 +308,10 @@ func Transaction(c *gin.Context) {
 				continue
 			}
 			log.Info().Msgf("SuccessHax is %s ", hex)
-			//current.TransNotify.Delete(hex)
-			//err := ws.WriteMessage(200, []byte(hex))
-			//if err != nil {
-			//	log.Info().Msgf("ws WriteMessage err is %s", err.Error())
-			//	return
-			//}
 			break
 			// TODO 设置主动推送的限制时间 主动推送数据
 		}
 	}(res.SignHax, currentEngine)
-	// 如何 监听交易成功后
-
 }
 
 // GetLinkStatus 获取实时的链上状态
@@ -467,6 +335,7 @@ func GetLinkStatus(c *gin.Context) {
 	}
 	res.GasPrice = price
 	APIResponse(c, nil, res)
+	return
 }
 
 // GetBalance 获取账户的余额信息
@@ -490,6 +359,7 @@ func GetBalance(c *gin.Context) {
 	}
 	res := GetBalanceRes{Balance: balance.String()}
 	APIResponse(c, nil, res)
+	return
 }
 
 // AddNetWork 添加网络
@@ -516,47 +386,51 @@ func CheckTrans(c *gin.Context) {
 		}{
 			isOk: false,
 		})
+		return
 	}
 	APIResponse(c, nil, struct {
 		isOk bool
 	}{
 		isOk: true,
 	})
+	return
 }
 
 // GetWalletInfo 获取钱包基础信息
 func GetWalletInfo(c *gin.Context) {
-	find := false
+	//find := false
 	type walletInfo struct {
 		User  *db.User
 		Trans []*db.Transfer
 	}
-	account := c.GetHeader("Account")
+	//account := c.GetHeader("Account")
 	info := &walletInfo{}
 	address, ok := c.GetQuery("Address")
 	if !ok {
 		APIResponse(c, ErrNoAddress, nil)
+		return
 	}
 
 	usr := db.GetUserFromDB(address)
-	ac := db.GetAccountInfo(account)
-	for _, v := range ac.WalletList {
-		temp := v
-		// 看钱包地址是否是这个人的
-		if address == temp {
-			find = true
-			break
-		}
-	}
-	if !find {
-		APIResponse(c, ErrNoPremission, nil)
-		return
-	}
+	//ac := db.GetAccountInfo(account)
+	//for _, v := range ac.WalletList {
+	//	temp := v
+	//	// 看钱包地址是否是这个人的
+	//	if address == temp {
+	//		find = true
+	//		break
+	//	}
+	//}
+	//if !find {
+	//	APIResponse(c, ErrNoPremission, nil)
+	//	return
+	//}
 	info.User = usr
 	info.Trans = append(info.Trans, db.GetTransferFromDB(address)...)
 
 	log.Info().Msgf("GetWalletInfo info is %v ", usr)
 	APIResponse(c, nil, info)
+	return
 }
 
 // ImportWallet 从外部导入钱包
@@ -681,33 +555,16 @@ func Login(c *gin.Context) {
 
 	if ac == nil {
 		APIResponse(c, ErrAccountErr, nil)
+		return
 	}
 
 	// TODO 加密
 	if ac.PassWD != lR.PassWD {
 		APIResponse(c, ErrPasswdErr, nil)
+		return
 	}
-	//var count int
-	//session := sessions.Default(c)
-	//v := session.Get("wallet")
-	//session.Options(sessions.Options{MaxAge: 3600 * 24})
-	//if v == nil {
-	//	count = 0
-	//} else {
-	//	count = v.(int)
-	//	count++
-	//}
-	//log.Info().Msgf("Wallet info is %d ", count)
-	//session.Set("wallet", count)
-	//err = session.Save()
-	//if err != nil {
-	//	APIResponse(c, err, nil)
-	//}
-	//c.JSON(200, gin.H{
-	//	"wallet-Session": count,
-	//})
 	db.UpDataLoginInfo(lR.Account)
-	APIResponse(c, nil, ac)
+	APIResponse(c, nil, ac.WalletList)
 }
 
 // Register 注册
@@ -717,15 +574,94 @@ func Register(c *gin.Context) {
 	if err != nil {
 		log.Info().Msgf("Register bind err is %s ", err.Error())
 		APIResponse(c, err, nil)
+		return
 	}
 	account, err := db.UpDataAccountInfo(rR.Account, rR.PassWD)
 	if err != nil {
 		APIResponse(c, err, nil)
+		return
 	}
 	APIResponse(c, nil, account)
 }
 
+// AddNFT 向钱包中加入NFT
+func AddNFT(c *gin.Context) {
+	var aT AddNFTReq
+	if err := c.ShouldBindJSON(&aT); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	// TODO 这里应该是去链上查询这个 nft 是否是这个人的 这里暂时不做处理
+	// 走添加新币的 流程 但是特殊判断是否是 NFT
+
+	usr := db.GetUserFromDB(aT.UserAddress)
+	err := usr.ImportNFTToDB(aT.ContractAddress, aT.TokenID)
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+	APIResponse(c, nil, nil)
+}
+
 // NFTTransfer 721 nft 交易
 func NFTTransfer(c *gin.Context) {
+	account := c.GetHeader("Account")
+	//var find bool
+	var nT NftTransaction
+	var res SendTransactionRes
+	if err := c.ShouldBindJSON(&nT); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	// 检查用户的账户中是否有这个钱包地址
+	ac := db.GetAccountInfo(account)
 
+	log.Debug().Msgf("ac.WalletList is %v from account is %s ", ac.WalletList, nT.From)
+	//for _, v := range ac.WalletList {
+	//	temp := v
+	//	// 看钱包地址是否是这个人的
+	//	if strings.Compare(nT.From, temp) == 0 {
+	//		find = true
+	//		break
+	//	}
+	//}
+	//if !find {
+	//	APIResponse(c, ErrNoPremission, 1)
+	//	return
+	//}
+	//find = false
+	usr := db.GetUserFromDB(nT.From)
+	//for _, v := range usr.NFTAssets {
+	//	temp := v
+	//	if temp.ContractAddress == nT.ContractAddress && temp.TokenID == nT.TokenID {
+	//		find = true
+	//		break
+	//	}
+	//}
+	//if !find {
+	//	APIResponse(c, ErrNoPremission, 2)
+	//	return
+	//}
+	fromHx, signHx, nonce, err := engine.NFTTransfer(nT.ContractAddress, nT.From, usr.PrivateKey, nT.To, nT.TokenID)
+	if err != nil {
+		log.Error().Msgf("NFTTransfer err is %s", err.Error())
+		APIResponse(c, err, nil)
+		return
+	}
+	// 更新用户的 NFT 状态
+	res.FromHex = fromHx
+	res.SignHax = signHx
+	res.Nonce = nonce
+	APIResponse(c, nil, res)
+}
+
+func GetWalletList(c *gin.Context) {
+	account := c.GetHeader("Account")
+	ac := db.GetAccountInfo(account)
+	if ac == nil {
+		APIResponse(c, ErrNoPremission, nil)
+		return
+	}
+	APIResponse(c, nil, ac.WalletList)
+	return
 }

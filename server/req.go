@@ -70,6 +70,14 @@ type SendTransaction struct {
 	Num      string `json:"num" binding:"required"`      // 数量
 }
 
+// NftTransaction NFT交易
+type NftTransaction struct {
+	From            string `json:"from" binding:"required"`            // 用户的钱包地址
+	To              string `json:"to" binding:"required"`              // 接收者
+	ContractAddress string `json:"contractAddress" binding:"required"` // NFT合约地址
+	TokenID         string `json:"tokenID" binding:"required"`         // NFT的ID
+}
+
 // CheckTransReq 检查交易是否成功
 type CheckTransReq struct {
 	Protocol string `json:"protocol" binding:"required"` // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
@@ -100,4 +108,11 @@ type LoginReq struct {
 type RegisterReq struct {
 	Account string `json:"account" binding:"required"` // 登录账户
 	PassWD  string `json:"passWD" binding:"required"`  // 传入的密码
+}
+
+// AddNFTReq 向钱中加入 NFT
+type AddNFTReq struct {
+	UserAddress     string `json:"userAddress" binding:"required"` // 用户的钱包地址
+	ContractAddress string `json:"contractAddress" binding:"required"`
+	TokenID         string `json:"tokenID" binding:"required"`
 }

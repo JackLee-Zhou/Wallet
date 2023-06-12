@@ -39,22 +39,24 @@ func Start(isSwag bool, configPath string) {
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
+	err = engine.NewNFTWorker("https://polygon-mumbai-bor.publicnode.com")
+	if err != nil {
+		log.Fatal().Msgf("NewNFTWorker err is %s ", err.Error())
+	}
 	server := gin.Default()
 	//TODO 这里开始启动除开配置中的 20 Token 监听
 	//start20TokenListen(server.)
 	// 中间件
 	server.Use(gin.Logger())
 	server.Use(gin.Recovery())
-	server.Use(SetEngine(engines...))
-	server.Use(start20Token())
+	//server.Use(SetEngine(engines...))
+	//server.Use(start20Token())
 	//server.Use(AuthRequired())
 	//server.Use(sessions.Sessions("Session", store))
 	auth := server.Group("/", AuthRequired())
 	{
 		auth.POST("/createWallet", CreateWallet)
 		auth.POST("/delWallet", DelWallet)
-		auth.POST("/withdraw", Withdraw)
-		auth.POST("/collection", Collection)
 		auth.GET("/getTransactionReceipt", GetTransactionReceipt)
 		// TODO 发起一笔交易
 		auth.POST("/transaction", Transaction)
@@ -70,7 +72,7 @@ func Start(isSwag bool, configPath string) {
 		auth.POST("/addNetWork", AddNetWork)
 		// 获取钱包基础信息
 		auth.GET("/getWalletInfo", GetWalletInfo)
-
+		auth.GET("/getWalletList", GetWalletList)
 		// 获取账户的活动信息
 		auth.GET("/getActivity", GetActivity)
 		auth.GET("/getHistoryTrans", GetHistoryTrans)
@@ -78,7 +80,9 @@ func Start(isSwag bool, configPath string) {
 		auth.POST("/checkTrans", CheckTrans)
 		auth.POST("/changSignType", ChangSignType)
 		auth.POST("/exportWallet", ExportWallet)
-		auth.POST("/nFTTransfer", NFTTransfer)
+		auth.POST("/nftTransfer", NFTTransfer)
+		auth.POST("/addNft", AddNFT)
+
 	}
 	// 登录检测
 	server.POST("/login", Login)

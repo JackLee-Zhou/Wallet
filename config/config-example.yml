@@ -1,5 +1,5 @@
 app:
-  port: 10001
+  port: 10002
 server:
 #  应该统一的提供 rpc 地址，而不是依靠这个配置表，实际这个配置表不应该这样写 默认提供主网的 rpc 地址，用户可以自己添加网络
   rpc: https://polygon-mumbai-bor.publicnode.com
@@ -10,14 +10,14 @@ engines:
     contract:
     contract_type:
     protocol: eth
-    rpc: https://endpoints.omniatech.io/v1/matic/mumbai/public
+    rpc: https://polygon-mumbai.blockpi.network/v1/rpc/public
     file: data/eth
     wallet_prefix: wallet-
     hash_prefix: hash-
     block_init: 0
-    block_after_time: 1
+    block_after_time: 10
     receipt_count: 20
-    receipt_after_time: 1
+    receipt_after_time: 10
     collection_after_time: 2
     collection_count: 10
     collection_max: 10

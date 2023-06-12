@@ -19,7 +19,7 @@ type Worker interface {
 	GetTransactionReceipt(*types.Transaction) error
 	GetBalance(address string) (*big.Int, error)
 	CreateWallet() (*types.Wallet, error)
-	Transfer(privateKeyStr string, toAddress string, value *big.Int, nonce uint64) (string, string, uint64, error)
+	Transfer(privateKeyStr string, fromAddress, toAddress string, value *big.Int, nonce uint64) (string, string, uint64, error)
 	GetGasPrice() (string, error)
 }
 
@@ -248,58 +248,6 @@ func (c *ConCurrentEngine) createCollectionWorker(out chan db.WalletItem) {
 	}()
 }
 
-// collectionSendWorker 创建归集发送交易的worker
-func (c *ConCurrentEngine) createCollectionSendWorker(max *big.Int) {
-	in := c.scheduler.CollectionSendWorkerChan()
-	go func() {
-		for {
-			c.scheduler.CollectionSendWorkerReady(in)
-			collectionSend := <-in
-			_, err := c.collection(collectionSend.Address, collectionSend.PrivateKey, max)
-			if err != nil {
-				// 归集失败，重新加入归集队列
-				c.scheduler.CollectionSendSubmit(collectionSend)
-				continue
-			}
-		}
-	}()
-}
-
-// 归集
-func (c ConCurrentEngine) collection(address, privateKey string, max *big.Int) (*big.Int, error) {
-	balance, err := c.Worker.GetBalance(address)
-	if err != nil {
-		return nil, err
-	}
-	if balance.Cmp(max) < 0 {
-		return big.NewInt(0), nil
-	}
-
-	// 开始归集
-	_, _, _, err = c.Worker.Transfer(privateKey, c.Config.CollectionAddress, balance, 0)
-	if err != nil {
-		return nil, err
-	}
-	return balance, nil
-}
-
-// Collection 归集某个地址
-func (c *ConCurrentEngine) Collection(address string, max *big.Int) (*big.Int, error) {
-
-	// 查询地址是否存在
-	////privateKey, err := c.DB.Get(c.Config.WalletPrefix + address)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//
-	//balance, err := c.collection(address, privateKey, max)
-	//if err != nil {
-	//	return nil, err
-	//}
-
-	return nil, nil
-}
-
 // CreateWallet 创建钱包
 func (c *ConCurrentEngine) CreateWallet() (string, error) {
 	wallet, err := c.Worker.CreateWallet()
@@ -325,17 +273,6 @@ func (c *ConCurrentEngine) DeleteWallet(address string) error {
 	//	return err
 	//}
 	return nil
-}
-
-// Withdraw 提现
-func (c *ConCurrentEngine) Withdraw(orderId string, toAddress string, value int64) (string, error) {
-
-	_, hash, _, err := c.Worker.Transfer(c.Config.WithdrawPrivateKey, toAddress, big.NewInt(value), 0)
-	if err != nil {
-		return "", err
-	}
-	//_ = c.DB.Put(c.Config.HashPrefix+hash, orderId)
-	return hash, nil
 }
 
 // GetTransactionReceipt 获取交易状态
@@ -391,16 +328,17 @@ func AddNewCoin(coinName, contractAddress string) (*ConCurrentEngine, error) {
 
 	eng, err := NewEngine(config.EngineConfig{
 		CoinName: coinName,
+		// 关键是这个 Address 通过这个 Address 来进行合约的标准操作
 		Contract: contractAddress,
 		Protocol: "eth",
-		Rpc:      "https://endpoints.omniatech.io/v1/matic/mumbai/public",
+		Rpc:      "https://polygon-mumbai.blockpi.network/v1/rpc/public",
 		//File:              "data/" + coinName,
 		WalletPrefix:      "wallet-",
 		HashPrefix:        "hash-",
 		BlockInit:         0,
-		BlockAfterTime:    1,
+		BlockAfterTime:    10,
 		ReceiptCount:      20,
-		ReceiptAfterTime:  1,
+		ReceiptAfterTime:  10,
 		RechargeNotifyUrl: "http://localhost:10001/api/withdraw",
 		WithdrawNotifyUrl: "http://localhost:10001/api/withdraw",
 	}, false)
