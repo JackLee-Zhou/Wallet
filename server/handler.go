@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lmxdawn/wallet/db"
 	"github.com/lmxdawn/wallet/engine"
+	"github.com/lmxdawn/wallet/types"
 	"github.com/rs/zerolog/log"
 	"io"
 	"math/big"
@@ -375,20 +376,32 @@ func CheckTrans(c *gin.Context) {
 		HandleValidatorError(c, err)
 		return
 	}
-	v, ok := c.Get(cT.Protocol + cT.CoinName)
-	if !ok {
-		HandleValidatorError(c, ErrNotData)
-		return
-	}
 	cTR := &CheckTransResp{}
 	cTR.TxHash = cT.TxHash
-	currentEngine := v.(*engine.ConCurrentEngine)
-	if _, ok := currentEngine.TransNotify.Load(cT.TxHash); !ok {
-		cTR.Message = "pending"
-		cTR.Status = 1
-		APIResponse(c, ErrNoSuccess, cTR)
-		return
+
+	if val, ok := TransMap.TransMap.Load(cT.TxHash); !ok {
+		ts := val.(*types.Transaction)
+		if ts.HasCheck {
+			if ts.Status == 1 {
+				cTR.Message = "success"
+				cTR.Status = 1
+			} else {
+				cTR.Message = "fail"
+				cTR.Status = 2
+			}
+			APIResponse(c, ErrNoSuccess, cTR)
+			return
+		} else {
+			cTR.Message = "pending"
+			cTR.Status = 0
+			APIResponse(c, ErrNoSuccess, cTR)
+			return
+		}
 	}
+	//currentEngine := v.(*engine.ConCurrentEngine)
+	//if _, ok := currentEngine.TransNotify.Load(cT.TxHash); !ok {
+	//
+	//}
 
 	// 处理 NFT 和本地未存储上的交易结果 直接去链上查
 	response, err := http.Get("https://api-testnet.polygonscan.com/api?" +
