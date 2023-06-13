@@ -1,14 +1,14 @@
 package server
 
 type CreateWalletReq struct {
-	Protocol string `json:"protocol" binding:"required"` // 协议
+	Protocol string `json:"protocol"`                    // 协议
 	CoinName string `json:"coinName" binding:"required"` // 币种名称
 }
 
 type DelWalletReq struct {
-	Protocol string `json:"protocol" binding:"required"` // 协议
-	CoinName string `json:"coinName" binding:"required"` // 币种名称
-	Address  string `json:"address" binding:"required"`  // 地址
+	Protocol string `json:"protocol"`                   // 协议
+	CoinName string `json:"coinName"`                   // 币种名称
+	Address  string `json:"address" binding:"required"` // 地址
 }
 
 type WithdrawReq struct {
@@ -27,20 +27,20 @@ type CollectionReq struct {
 }
 
 type TransactionReceiptReq struct {
-	Protocol string `json:"protocol" binding:"required"` // 协议
+	Protocol string `json:"protocol" `                   // 协议
 	CoinName string `json:"coinName" binding:"required"` // 币种名称
 	Hash     string `json:"hash" binding:"required"`     // 交易哈希
 }
 
 type GetLinkStatusReq struct {
-	Protocol string `json:"protocol" binding:"required"` // 指定要获取的链名称
-	Rpc      string `json:"rpc" binding:"required"`      // 链接地址
-	ChainID  uint32 `json:"chainID"`                     // 链ID
+	Protocol string `json:"protocol" ` // 指定要获取的链名称
+	LinkName string `json:"linkName"`  // 链接
+	ChainID  uint32 `json:"chainID"`   // 链ID
 }
 
 // AddNewCoinReq 增加新的币种
 type AddNewCoinReq struct {
-	Protocol        string `json:"protocol" binding:"required"`        // 指定要获取的链名称
+	Protocol        string `json:"protocol" `                          // 指定要获取的链名称
 	ContractAddress string `json:"contractAddress" binding:"required"` // 指定新币的合约地址
 	UserAddress     string `json:"userAddress" binding:"required"`     // 用户的钱包地址
 	CoinName        string `json:"coinName" `                          // 币种名称
@@ -48,7 +48,7 @@ type AddNewCoinReq struct {
 
 // GetBalanceReq 获取账户余额信息
 type GetBalanceReq struct {
-	Protocol    string `json:"protocol" binding:"required"`    // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
+	Protocol    string `json:"protocol" `                      // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
 	UserAddress string `json:"userAddress" binding:"required"` // 用户的钱包地址
 	CoinName    string `json:"coinName" `                      // 币种名称
 	//ChainID     uint32 `json:"chainID"`                        // 链ID
@@ -56,18 +56,18 @@ type GetBalanceReq struct {
 
 // GetWalletActivity 获取钱包活动信息 交易记录
 type GetWalletActivity struct {
-	Protocol    string `json:"protocol" binding:"required"`    // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
+	Protocol    string `json:"protocol" `                      // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
 	UserAddress string `json:"userAddress" binding:"required"` // 用户的钱包地址
 	CoinName    string `json:"coinName" `                      // 币种名称
 }
 
 // SendTransaction 发起一笔交易
 type SendTransaction struct {
-	Protocol string `json:"protocol" binding:"required"` // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
-	From     string `json:"from" binding:"required"`     // 用户的钱包地址
-	CoinName string `json:"coinName" binding:"required"` // 币种名称 为空表示原生币
-	To       string `json:"to" binding:"required"`       // 接收者
-	Num      string `json:"num" binding:"required"`      // 数量
+	Protocol string `json:"protocol"`                // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
+	From     string `json:"from" binding:"required"` // 用户的钱包地址
+	CoinName string `json:"coinName"`                // 币种名称 为空表示原生币
+	To       string `json:"to" binding:"required"`   // 接收者
+	Num      string `json:"num" binding:"required"`  // 数量
 }
 
 // NftTransaction NFT交易
@@ -80,16 +80,16 @@ type NftTransaction struct {
 
 // CheckTransReq 检查交易是否成功
 type CheckTransReq struct {
-	Protocol string `json:"protocol" binding:"required"` // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
-	Address  string `json:"address" binding:"required"`  // 用户的钱包地址
-	CoinName string `json:"coinName" binding:"required"` // 币种名称 为空表示原生币
-	TxHash   string `json:"txHash"  binding:"required"`  // 交易Hash
+	Protocol string `json:"protocol" `                  // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
+	Address  string `json:"address" `                   // 用户的钱包地址
+	CoinName string `json:"coinName"`                   // 币种名称 为空表示原生币
+	TxHash   string `json:"txHash"  binding:"required"` // 交易Hash
 }
 
 // CheckTransResp 检查交易是否成功回执
 type CheckTransResp struct {
 	TxHash  string `json:"txHash"`  // 交易Hash
-	Status  int    `json:"status"`  // 交易状态 0 失败 1 等到确认 2 成功
+	Status  int    `json:"status"`  // 交易状态 0 等待 1 成功 2 失败
 	Message string `json:"message"` // 交易状态描述
 }
 
@@ -103,6 +103,10 @@ type ChangSignTypeReq struct {
 // ExportWalletReq 导出钱包
 type ExportWalletReq struct {
 	Address string `json:"address" binding:"required"` // 导出地址
+}
+
+type ImportWalletReq struct {
+	PrivateKey string `json:"privateKey" binding:"required"` // 私钥
 }
 
 // LoginReq 登录请求

@@ -14,7 +14,7 @@ func HandleValidatorError(c *gin.Context, err error) {
 	//如何返回错误信息
 	errs, ok := err.(validator.ValidationErrors)
 	if !ok {
-		APIResponse(c, InternalServerError, nil)
+		APIResponse(c, err, nil)
 		return
 	}
 	APIResponse(c, ErrParam, firstErr(errs.Translate(trans)))

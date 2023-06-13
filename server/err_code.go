@@ -22,6 +22,8 @@ var (
 	ErrLoginExpire        = &Errno{Code: 10015, Message: "登录超时"}
 	ErrNoPremission       = &Errno{Code: 10016, Message: "权限不允许"}
 	ErrSame20Token        = &Errno{Code: 10017, Message: "存在相同代币"}
+	ErrNoCoin             = &Errno{Code: 10018, Message: "代币不存在"}
+	ErrNoAccount          = &Errno{Code: 10019, Message: "账户不存在"}
 )
 
 // Errno ...

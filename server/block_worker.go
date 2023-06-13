@@ -90,24 +90,11 @@ func listenBlock(blockNum int64) error {
 			TransMap.TransMap.Store(ts.Hash, ts)
 			TransMap.From[msg.From().Hex()] = append(TransMap.From[msg.From().Hex()], ts)
 			log.Info().Msgf("listenBlock find Trans Hash is %s from %s blockNum is %d", ts.Hash, msg.From().Hex(), blockNum)
-		} else if db.CheckWalletIsInDB(msg.To().Hex()) {
+		} else if db.CheckWalletIsInDB(tx.To().Hex()) {
 			TransMap.TransMap.Store(ts.Hash, ts)
 			TransMap.From[msg.From().Hex()] = append(TransMap.From[msg.From().Hex()], ts)
 			log.Info().Msgf("listenBlock find Trans Hash is %s to %s blockNum is %d", ts.Hash, msg.To().Hex(), blockNum)
 		}
-
-		// 再判断是或否是代币是需要监听的代币
-		// 若是代币交易 则 to 应该是合约地址
-		//_, ok := CoinList.Mapping[tx.To().Hex()]
-		//
-		//// 只关心本钱包用户的交易
-		//
-		//// 是所需要监听的代币 或者 原生币交易 则 data 为空
-		//if ok || db.CheckWalletIsInDB(msg.To().Hex()) {
-		//
-		//} else if ok || db.CheckWalletIsInDB(msg.From().Hex()) {
-		//
-		//}
 	}
 	return nil
 }
@@ -123,7 +110,6 @@ func startGetReceipt(maxListenLine int) {
 			if ts.HasCheck {
 				return true
 			}
-			log.Info().Msgf("listenReceipt %+v ", ts)
 			hash := common.HexToHash(ts.Hash)
 			receipt, err := ListenHttp.TransactionReceipt(context.Background(), hash)
 			if err != nil {
@@ -152,7 +138,7 @@ func startGetReceipt(maxListenLine int) {
 // timeToDB 定时写入数据库
 func timeToDB() {
 	log.Info().Msgf("timeToDB start")
-
+	// 一边数据库落地 一边更新内存中的数据
 	for {
 		TransMap.TransMap.Range(func(key, value interface{}) bool {
 			ts := value.(*types.Transaction)
@@ -163,7 +149,13 @@ func timeToDB() {
 			if !ts.HasCheck {
 				return true
 			}
-			db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String())
+			coin, ok := CoinList.Mapping[ts.To]
+			if ok {
+				db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), coin.ContractAddress)
+			} else {
+				db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), "")
+			}
+
 			ts.Dirty = true
 			log.Info().Msgf("timeToDB write to db %+v", ts)
 			return true

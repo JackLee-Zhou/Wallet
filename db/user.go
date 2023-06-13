@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/lmxdawn/wallet/types"
 	"github.com/rs/zerolog/log"
 	"math/big"
 	"strconv"
@@ -32,22 +31,26 @@ type NFTAssets struct {
 }
 
 type CoinAssets struct {
-	ContractAddress string               // 资产合约地址，为空表示主币
-	Symbol          string               // 资产符号
-	Num             *big.Int             // 拥有的数量
-	Trans           []*types.Transaction // 该种资产的交易信息
+	ContractAddress string      // 资产合约地址，为空表示主币
+	Symbol          string      // 资产符号
+	Num             *big.Int    // 拥有的数量
+	Trans           []*Transfer // 该种资产的交易信息
+}
+
+type Assets struct {
+	Coin []*CoinAssets // 资产
+	NFT  []*NFTAssets  // NFT 资产
 }
 
 type User struct {
-	Address        string        // 用户钱包地址
-	PrivateKey     string        // 用户私钥
-	PublicKey      string        // 用户公钥
-	SingType       int32         // 钱包签名方式 0 单签  1: 2/3 多签 2: 3/5 多签
-	SignGroup      []string      // 多签地址
-	CurrentNetWork *NetWork      // 用户当前所处的网络
-	NetWorks       []*NetWork    // 用户添加的网络地址
-	UserAssets     []*CoinAssets // 用户资产数据
-	NFTAssets      []*NFTAssets  // 用户 NFT 资产数据
+	Address        string             // 用户钱包地址
+	PrivateKey     string             // 用户私钥
+	PublicKey      string             // 用户公钥
+	SingType       int32              // 钱包签名方式 0 单签  1: 2/3 多签 2: 3/5 多签
+	SignGroup      []string           // 多签地址
+	CurrentNetWork *NetWork           // 用户当前所处的网络
+	NetWorks       []*NetWork         // 用户添加的网络地址
+	Assets         map[string]*Assets // 用户资产 key 为网络名称
 }
 
 type Transfer struct {
@@ -101,10 +104,10 @@ func (c User) UnmarshalBinary(data []byte) error {
 // NewWalletUser 新建一个钱包用戶
 func NewWalletUser(address, privateKey, publicKey string) *User {
 	net := []*NetWork{}
-	asset := []*CoinAssets{}
-	trans := []*types.Transaction{}
+	//asset := []*CoinAssets{}
+	trans := []*Transfer{}
 	singGroup := []string{}
-	nft := []*NFTAssets{}
+	//nft := []*NFTAssets{}
 	// 设置默认网络
 	currentNetWork := &NetWork{
 		NetWorkName: "Polygon",
@@ -125,11 +128,13 @@ func NewWalletUser(address, privateKey, publicKey string) *User {
 		CurrentNetWork: currentNetWork,
 		NetWorks:       net,
 		SignGroup:      singGroup,
-		UserAssets:     asset,
-		NFTAssets:      nft,
+		Assets:         make(map[string]*Assets),
 	}
+	// 添加默认的一个资产
+	user.Assets[currentNetWork.NetWorkName] = &Assets{}
+	user.Assets[currentNetWork.NetWorkName].Coin = append(user.Assets[currentNetWork.NetWorkName].Coin, defaultAsset)
 	user.NetWorks = append(user.NetWorks, currentNetWork)
-	user.UserAssets = append(user.UserAssets, defaultAsset)
+	//user.UserAssets = append(user.UserAssets, defaultAsset)
 	return user
 }
 
@@ -138,27 +143,91 @@ func GetUserFromDB(address string) *User {
 	res, err := Rdb.HGet(context.Background(), UserDB, address).Result()
 	if err != nil {
 		log.Info().Msgf("GetUserFromDB err is %s ", err.Error())
+		return nil
 	}
 	log.Info().Msgf("GetUserFromDB res is %s ", res)
 	usr := &User{}
 	err = json.Unmarshal([]byte(res), usr)
 	if err != nil {
-		log.Info().Msgf("GetUserFromDB err is %s ", err.Error())
+		log.Info().Msgf("GetUserFromDB Unmarshal err is %s ", err.Error())
+		return nil
+	}
+	if usr.Assets == nil {
+		trans := []*Transfer{}
+		defaultAsset := &CoinAssets{
+			ContractAddress: "",
+			Symbol:          "MATIC",
+			Num:             big.NewInt(0),
+			Trans:           trans,
+		}
+		usr.Assets = make(map[string]*Assets)
+		usr.Assets[usr.CurrentNetWork.NetWorkName] = &Assets{
+			Coin: []*CoinAssets{},
+			NFT:  []*NFTAssets{},
+		}
+		usr.Assets[usr.CurrentNetWork.NetWorkName].Coin = append(usr.Assets[usr.CurrentNetWork.NetWorkName].Coin, defaultAsset)
+		UpDataUserInfo(usr)
 	}
 	return usr
 }
 
-func UpDataUserTransInfo(address, coinName string, trans []*types.Transaction) {
+// GetAllAddress 获取所有的地址
+func GetAllAddress() []*User {
+	res, err := Rdb.HGetAll(context.Background(), UserDB).Result()
+	if err != nil {
+		log.Error().Msgf("GetAllAddress err is %s ", err.Error())
+		return nil
+	}
+	usrs := []*User{}
+	for _, val := range res {
+		usr := &User{}
+		err := json.Unmarshal([]byte(val), &usr)
+		if err != nil {
+			log.Error().Msgf("GetAllAddress err is %s ", err.Error())
+			continue
+		}
+		// 结构变更兼容
+		if usr.Assets == nil {
+			trans := []*Transfer{}
+			defaultAsset := &CoinAssets{
+				ContractAddress: "",
+				Symbol:          "MATIC",
+				Num:             big.NewInt(0),
+				Trans:           trans,
+			}
+			usr.Assets = make(map[string]*Assets)
+			usr.Assets[usr.CurrentNetWork.NetWorkName] = &Assets{
+				Coin: []*CoinAssets{},
+				NFT:  []*NFTAssets{},
+			}
+			usr.Assets[usr.CurrentNetWork.NetWorkName].Coin = append(usr.Assets[usr.CurrentNetWork.NetWorkName].Coin, defaultAsset)
+			UpDataUserInfo(usr)
+		}
+		usrs = append(usrs, usr)
+	}
+	return usrs
+}
+
+func UpDataUserTransInfo(address, contractAddress string, trans []*Transfer) {
 	usr := GetUserFromDB(address)
-	for _, v := range usr.UserAssets {
-		if v.Symbol == coinName {
+	if usr == nil {
+		return
+	}
+	for _, v := range usr.Assets[usr.CurrentNetWork.NetWorkName].Coin {
+		if v.ContractAddress == contractAddress {
 			v.Trans = trans
 			break
 		}
 	}
-	_, err := Rdb.HSet(context.Background(), UserDB, address, usr).Result()
+	_, err := Rdb.HDel(context.Background(), UserDB, address).Result()
+	if err != nil {
+		log.Info().Msgf("UpDataUserTransInfo HDel err is %s ", err.Error())
+		return
+	}
+	_, err = Rdb.HSet(context.Background(), UserDB, address, usr).Result()
 	if err != nil {
 		log.Info().Msgf("UpDataUserTransInfo toDb err is %s ", err.Error())
+		return
 	}
 }
 
@@ -202,16 +271,22 @@ func (u *User) MulSignMode(to, coinName, num string) bool {
 }
 
 // UpDateTransInfo 更新交易数据
-func UpDateTransInfo(hex, from, to, value string) {
+func UpDateTransInfo(hex, from, to, value, coinName string) {
 
 	// 秒级时间戳
 	ts := &Transfer{Hex: hex, From: from, To: to, Value: value, TimeStamp: strconv.Itoa(int(time.Now().UnixMilli()))}
 
+	ts.CoinName = coinName
+	// 更新所有的
 	_, err := Rdb.HSet(context.Background(), TransferDB, hex, ts).Result()
 	if err != nil {
 		log.Info().Msgf("UpDateTransInfo err is %s ", err.Error())
 		return
 	}
+	//	 过滤 更新单个币的活动
+	UpDataUserTransInfo(from, coinName, []*Transfer{ts})
+	UpDataUserTransInfo(to, coinName, []*Transfer{ts})
+
 }
 
 // GetTransferFromDB 获取以 from 为目标地址的交易信息
@@ -326,18 +401,38 @@ func CheckLoginInfo(account string) bool {
 
 // ImportNFTToDB 导入NFT数据到数据库
 func (usr *User) ImportNFTToDB(contractAddress, tokenID string) error {
-	for _, v := range usr.NFTAssets {
+	for _, v := range usr.Assets[usr.CurrentNetWork.NetWorkName].NFT {
 		temp := v
 		if temp.ContractAddress == contractAddress && temp.TokenID == tokenID {
 			log.Info().Msgf("ImportNFTToDB NFT is already in DB ")
 			return errors.New("ImportNFTToDB NFT is already in DB")
 		}
 	}
-	usr.NFTAssets = append(usr.NFTAssets, &NFTAssets{
+	usr.Assets[usr.CurrentNetWork.NetWorkName].NFT = append(usr.Assets[usr.CurrentNetWork.NetWorkName].NFT, &NFTAssets{
 		contractAddress,
 		tokenID,
 	})
 
 	err := UpDataUserInfo(usr)
 	return err
+}
+
+func (usr *User) AddNetWork(name, rpc string, chainID uint32) error {
+
+	for _, v := range usr.NetWorks {
+		if v.NetWorkName == name || v.ChainID == chainID {
+			return errors.New("Has Same Chain")
+		}
+	}
+	usr.NetWorks = append(usr.NetWorks, &NetWork{
+		name,
+		rpc,
+		chainID,
+	})
+	return nil
+}
+
+// ChangeNetWork 改变当前网络
+func (usr *User) ChangeNetWork(name string) {
+
 }

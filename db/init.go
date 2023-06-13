@@ -17,8 +17,8 @@ const (
 	CoinDB     = "Coin"
 )
 
-// init 数据库链接初始化
-func init() {
+// Init 数据库链接初始化
+func Init() {
 	//clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
 	//// 连接到MongoDB
 	//client, err := mongo.Connect(context.TODO(), clientOptions)

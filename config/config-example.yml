@@ -6,26 +6,11 @@ server:
 
 engines:
   # 以太坊主币
-  - coin_name: ETH
-    contract:
-    contract_type:
-    protocol: eth
+  - network: Polygon
     rpc: https://polygon-mumbai.blockpi.network/v1/rpc/public
-    file: data/eth
-    wallet_prefix: wallet-
-    hash_prefix: hash-
-    block_init: 0
-    block_after_time: 10
-    receipt_count: 20
-    receipt_after_time: 10
-    collection_after_time: 2
-    collection_count: 10
-    collection_max: 10
-    collection_address: 0x785380b6012648d0DEeE1F66ac18657Db2240789
-    confirms: 1
-    recharge_notify_url: http://localhost:10001/api/withdraw
-    withdraw_notify_url: http://localhost:10001/api/withdraw
-    withdraw_private_key: 61774dacba914e5675eef6c616df85c61d7c8917f56ee77f547a140f8f982d31
+  - network: Goerli
+    rpc: https://ethereum-goerli.publicnode.com
+
 #  # 以太坊erc20代币
 #  - coin_name: TEST
 #    contract: 0xeDc4019BCBdA0f7acCBB4833ffF54d618d9b7f82

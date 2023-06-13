@@ -14,7 +14,6 @@ import (
 	"math/big"
 	"net/http"
 	"strconv"
-	"time"
 )
 
 var upgrader = websocket.Upgrader{
@@ -44,16 +43,8 @@ func CreateWallet(c *gin.Context) {
 		return
 	}
 
-	v, ok := c.Get(q.Protocol + q.CoinName)
-	if !ok {
-		APIResponse(c, ErrEngine, nil)
-		return
-	}
-
-	currentEngine := v.(*engine.ConCurrentEngine)
-
 	// 创建钱包
-	address, err := currentEngine.CreateWallet()
+	wallet, err := engine.EWorker.CreateWallet()
 	if err != nil {
 		APIResponse(c, ErrCreateWallet, nil)
 		return
@@ -64,7 +55,7 @@ func CreateWallet(c *gin.Context) {
 		APIResponse(c, ErrAccountErr, nil)
 		return
 	}
-	ac.WalletList = append(ac.WalletList, address)
+	ac.WalletList = append(ac.WalletList, wallet.Address)
 	_, err = db.Rdb.HDel(context.Background(), db.AccountDB, ac.Account).Result()
 	if err != nil {
 		log.Info().Msgf("CreateWallet Del err is %s ", err.Error())
@@ -77,7 +68,7 @@ func CreateWallet(c *gin.Context) {
 		APIResponse(c, err, nil)
 		return
 	}
-	res := CreateWalletRes{Address: address}
+	res := CreateWalletRes{Address: wallet.Address}
 
 	APIResponse(c, nil, res)
 }
@@ -135,22 +126,14 @@ func GetTransactionReceipt(c *gin.Context) {
 		return
 	}
 
-	v, ok := c.Get(q.Protocol + q.CoinName)
-	if !ok {
-		APIResponse(c, ErrEngine, nil)
-		return
-	}
-
-	currentEngine := v.(*engine.ConCurrentEngine)
-
-	status, err := currentEngine.GetTransactionReceipt(q.Hash)
+	status, err := engine.EWorker.GetTransactionReceipt(q.Hash)
 	if err != nil {
 		APIResponse(c, InternalServerError, nil)
 		return
 	}
 
 	res := TransactionReceiptRes{
-		Status: status,
+		Status: int(status),
 	}
 
 	APIResponse(c, nil, res)
@@ -176,14 +159,14 @@ func AddNewCoin(c *gin.Context) {
 		return
 	}
 	// 先看 usr 中是否存在
-	for _, v := range usr.UserAssets {
+	for _, v := range usr.Assets[usr.CurrentNetWork.NetWorkName].Coin {
 		temp := v
 		if temp.ContractAddress == newCoin.ContractAddress {
 			APIResponse(c, ErrSame20Token, nil)
 			return
 		}
 	}
-	usr.UserAssets = append(usr.UserAssets, &db.CoinAssets{
+	usr.Assets[usr.CurrentNetWork.NetWorkName].Coin = append(usr.Assets[usr.CurrentNetWork.NetWorkName].Coin, &db.CoinAssets{
 		ContractAddress: newCoin.ContractAddress,
 		Symbol:          newCoin.CoinName,
 	})
@@ -196,17 +179,9 @@ func AddNewCoin(c *gin.Context) {
 
 	// 更新用户数据
 	db.UpDataUserInfo(usr)
-
-	// 这个 AdNewCoin 是针对所有服务的 不是单一用户，会整个监听 这里应该判断重复的问题
-	// @doc 将这个结构打入 redis 中 添加的时候做一个判断
-	eng, err := engine.AddNewCoin(newCoin.CoinName, newCoin.ContractAddress)
 	AddCoin(newCoin.CoinName, newCoin.ContractAddress, false)
-	// TODO 优化这种结构
-	c.Set(newCoin.Protocol+newCoin.CoinName, eng)
-	if err != nil {
-		APIResponse(c, err, nil)
-		return
-	}
+	APIResponse(c, nil, usr.Assets[usr.CurrentNetWork.NetWorkName].Coin)
+	return
 }
 
 // GetActivity 获取钱包活动信息 交易记录
@@ -217,16 +192,19 @@ func GetActivity(c *gin.Context) {
 		APIResponse(c, err, nil)
 		return
 	}
-
-	v, ok := c.Get(walletActivity.Protocol + walletActivity.CoinName)
-	if !ok {
-		HandleValidatorError(c, ErrNotData)
-		return
-	}
-	currentEngine := v.(*engine.ConCurrentEngine)
-	worker := currentEngine.Worker.(*engine.EthWorker)
+	//worker := engine.EWorker
 	// 查询历史记录
-	res.History = worker.TransHistory[walletActivity.UserAddress]
+	trans := db.GetTransferFromDB(walletActivity.UserAddress)
+	for _, v := range trans {
+		temp := v
+		res.History = append(res.History, &types.Transaction{
+			Hash: temp.Hex,
+			From: temp.From,
+			To:   temp.To,
+			//Value:           big.NewInt(temp.Value),
+		})
+	}
+	//res.History = worker.TransHistory[walletActivity.UserAddress]
 	res.UserAddress = walletActivity.UserAddress
 	APIResponse(c, nil, res)
 	return
@@ -238,36 +216,14 @@ func GetActivity(c *gin.Context) {
 // @Produce json
 func Transaction(c *gin.Context) {
 	//account := c.GetHeader("Account")
-	//find := false
+	find := false
 	var sT SendTransaction
 	var res SendTransactionRes
 	if err := c.ShouldBindJSON(&sT); err != nil {
 		HandleValidatorError(c, err)
 		return
 	}
-	// 检查用户的账户中是否有这个钱包地址
-	//ac := db.GetAccountInfo(account)
-	//for _, v := range ac.WalletList {
-	//	temp := v
-	//	// 看钱包地址是否是这个人的
-	//	if sT.From == temp {
-	//		find = true
-	//		break
-	//	}
-	//}
-	//if !find {
-	//	APIResponse(c, ErrNoPremission, nil)
-	//	return
-	//}
 
-	// TODO 优化这种处理结构
-	v, ok := c.Get(sT.Protocol + sT.CoinName)
-	if !ok {
-		HandleValidatorError(c, ErrNotData)
-		return
-	}
-
-	currentEngine := v.(*engine.ConCurrentEngine)
 	num, err := strconv.Atoi(sT.Num)
 	if err != nil {
 		APIResponse(c, err, nil)
@@ -279,14 +235,28 @@ func Transaction(c *gin.Context) {
 		APIResponse(c, err, nil)
 		return
 	}
+	// 检查用户是否存在该种代币
+	if sT.CoinName != "" {
+		for _, v := range usr.Assets[usr.CurrentNetWork.NetWorkName].Coin {
+			if v.ContractAddress == sT.CoinName {
+				find = true
+				break
+			}
+		}
+		if !find {
+			APIResponse(c, ErrNoCoin, nil)
+			return
+		}
+	}
 	// TODO 检查是否是多签 若是则走多签的流程
 	if usr.SingType != db.SingerSign {
 		usr.MulSignMode(sT.To, sT.CoinName, sT.Num)
 	}
 
+	worker := engine.EWorker
 	// 后端签名
 	// 这里 返回的仅是放到了交易池里面等到被执行，并没有实际的被真正的执行 还是处于 pending 状态
-	fromHex, signHex, nonce, err := currentEngine.Worker.Transfer(usr.PrivateKey, sT.From, sT.To, big.NewInt(int64(num)), 0)
+	fromHex, signHex, nonce, err := worker.Transfer(usr.PrivateKey, sT.To, big.NewInt(int64(num)), 0, sT.CoinName)
 	if err != nil {
 		APIResponse(c, err, nil)
 		return
@@ -294,45 +264,22 @@ func Transaction(c *gin.Context) {
 	res.FromHex = fromHex
 	res.SignHax = signHex
 	res.Nonce = nonce
-	go APIResponse(c, nil, res)
-
 	log.Info().Msgf("执行成功")
-
-	go func(hex string, current *engine.ConCurrentEngine) {
-		var totalWait int
-		for {
-			if totalWait > 20 {
-				break
-			}
-			totalWait++
-			log.Info().Msgf("Listen Total %d", totalWait)
-			_, ok := current.TransNotify.Load(hex)
-			if !ok {
-				time.Sleep(3 * time.Second)
-				continue
-			}
-			log.Info().Msgf("SuccessHax is %s ", hex)
-			break
-			// TODO 设置主动推送的限制时间 主动推送数据
-		}
-	}(res.SignHax, currentEngine)
+	APIResponse(c, nil, res)
+	return
 }
 
 // GetLinkStatus 获取实时的链上状态
 func GetLinkStatus(c *gin.Context) {
 	var res LinkStatus
 	var linkStatus GetLinkStatusReq
-	if err := c.ShouldBindJSON(&linkStatus); err != nil {
+	if err := c.BindJSON(&linkStatus); err != nil {
 		HandleValidatorError(c, err)
 		return
 	}
-	v, ok := c.Get(linkStatus.Rpc)
-	if !ok {
-		HandleValidatorError(c, ErrNotData)
-		return
-	}
-	currentEngine := v.(*engine.ConCurrentEngine)
-	price, err := currentEngine.Worker.GetGasPrice()
+
+	// 选择 不同的链
+	price, err := engine.EWorker.GetGasPrice()
 	if err != nil {
 		HandleValidatorError(c, err)
 		return
@@ -349,14 +296,8 @@ func GetBalance(c *gin.Context) {
 		HandleValidatorError(c, err)
 		return
 	}
-	v, ok := c.Get(balanceReq.Protocol + balanceReq.CoinName)
-	if !ok {
-		APIResponse(c, ErrEngine, nil)
-		return
-	}
-	currentEngine := v.(*engine.ConCurrentEngine)
 	// 代币是 20 币 直接使用20 协议中的 balanceOf
-	balance, err := currentEngine.Worker.GetBalance(balanceReq.UserAddress)
+	balance, err := engine.EWorker.GetBalance(balanceReq.UserAddress, balanceReq.CoinName)
 	if err != nil {
 		APIResponse(c, err, nil)
 		return
@@ -381,7 +322,7 @@ func CheckTrans(c *gin.Context) {
 	cTR := &CheckTransResp{}
 	cTR.TxHash = cT.TxHash
 
-	if val, ok := TransMap.TransMap.Load(cT.TxHash); !ok {
+	if val, ok := TransMap.TransMap.Load(cT.TxHash); ok {
 		ts := val.(*types.Transaction)
 		if ts.HasCheck {
 			if ts.Status == 1 {
@@ -391,19 +332,15 @@ func CheckTrans(c *gin.Context) {
 				cTR.Message = "fail"
 				cTR.Status = 2
 			}
-			APIResponse(c, ErrNoSuccess, cTR)
-			return
-		} else {
-			cTR.Message = "pending"
-			cTR.Status = 0
-			APIResponse(c, ErrNoSuccess, cTR)
+			APIResponse(c, nil, cTR)
 			return
 		}
+	} else {
+		cTR.Message = "pending"
+		cTR.Status = 0
+		APIResponse(c, nil, cTR)
+		return
 	}
-	//currentEngine := v.(*engine.ConCurrentEngine)
-	//if _, ok := currentEngine.TransNotify.Load(cT.TxHash); !ok {
-	//
-	//}
 
 	// 处理 NFT 和本地未存储上的交易结果 直接去链上查
 	response, err := http.Get("https://api-testnet.polygonscan.com/api?" +
@@ -427,7 +364,7 @@ func CheckTrans(c *gin.Context) {
 	}
 
 	log.Info().Msgf("Status is %+v ", lR)
-	if lR.Status == "0" {
+	if lR.Status == "1" {
 		cTR.Message = "success"
 		cTR.Status = 2
 		APIResponse(c, nil, cTR)
@@ -449,7 +386,6 @@ func GetWalletInfo(c *gin.Context) {
 		User  *db.User
 		Trans []*db.Transfer
 	}
-	//account := c.GetHeader("Account")
 	info := &walletInfo{}
 	address, ok := c.GetQuery("Address")
 	if !ok {
@@ -458,19 +394,6 @@ func GetWalletInfo(c *gin.Context) {
 	}
 
 	usr := db.GetUserFromDB(address)
-	//ac := db.GetAccountInfo(account)
-	//for _, v := range ac.WalletList {
-	//	temp := v
-	//	// 看钱包地址是否是这个人的
-	//	if address == temp {
-	//		find = true
-	//		break
-	//	}
-	//}
-	//if !find {
-	//	APIResponse(c, ErrNoPremission, nil)
-	//	return
-	//}
 	info.User = usr
 	info.Trans = append(info.Trans, db.GetTransferFromDB(address)...)
 
@@ -482,8 +405,44 @@ func GetWalletInfo(c *gin.Context) {
 // ImportWallet 从外部导入钱包
 func ImportWallet(c *gin.Context) {
 	// 根据私钥导入 导入后计算 地址和公钥
+	ac := c.GetHeader("account")
+	account := db.GetAccountInfo(ac)
+	if account == nil {
+		APIResponse(c, ErrNoAccount, nil)
+		return
+	}
 	// 流程类似于 CreatWallet 但是指定私钥和公钥 不用生成
 	// GetAddressByPrivateKey 可以使用这个直接生成地址
+	var iW ImportWalletReq
+	if err := c.ShouldBindJSON(&iW); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	address, err := engine.EWorker.GetAddressByPrivateKey(iW.PrivateKey)
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+	publicKey, _ := engine.GeneratePublicKey(iW.PrivateKey)
+	account.WalletList = append(account.WalletList, address)
+	// TODO 从链上获取交易记录 只过滤一下原生币的交易
+	//body := GetTransFromLink(address)
+	//
+	//var hR History
+	//err = json.Unmarshal(body, &hR)
+	//if err != nil {
+	//	APIResponse(c, err, nil)
+	//	return
+	//}
+
+	usr := db.NewWalletUser(address, iW.PrivateKey, publicKey)
+	// 打入数据库之后 由之后的定时更新余额的去更新余额
+	err = db.UpDataUserInfo(usr)
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+	APIResponse(c, nil, usr)
 }
 
 // ExportWallet 导出钱包
@@ -567,21 +526,9 @@ func GetHistoryTrans(c *gin.Context) {
 	// TODO 这个转账是外部转账 也就是原生币的交易记录 20币应该使用 internal 的转账
 	// action=txlistinternal
 	// TODO 取消硬编码
-	response, err := http.Get("https://api-testnet.polygonscan.com/api?" +
-		"module=account&action=txlist&address=" + address + "&startblock=0&endblock=99999999&page=1&offset=10" +
-		"&sort=asc&apikey=432F174RDZHNVM81M4JT8UJAWFW87DKUBV")
-	if err != nil {
-		APIResponse(c, err, nil)
-	}
-	defer response.Body.Close()
-	//res := []byte{}
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		APIResponse(c, err, nil)
-		return
-	}
+	body := GetTransFromLink(address)
 	var hR History
-	err = json.Unmarshal(body, &hR)
+	err := json.Unmarshal(body, &hR)
 	if err != nil {
 		APIResponse(c, err, nil)
 		return
@@ -663,31 +610,7 @@ func NFTTransfer(c *gin.Context) {
 	ac := db.GetAccountInfo(account)
 
 	log.Debug().Msgf("ac.WalletList is %v from account is %s ", ac.WalletList, nT.From)
-	//for _, v := range ac.WalletList {
-	//	temp := v
-	//	// 看钱包地址是否是这个人的
-	//	if strings.Compare(nT.From, temp) == 0 {
-	//		find = true
-	//		break
-	//	}
-	//}
-	//if !find {
-	//	APIResponse(c, ErrNoPremission, 1)
-	//	return
-	//}
-	//find = false
 	usr := db.GetUserFromDB(nT.From)
-	//for _, v := range usr.NFTAssets {
-	//	temp := v
-	//	if temp.ContractAddress == nT.ContractAddress && temp.TokenID == nT.TokenID {
-	//		find = true
-	//		break
-	//	}
-	//}
-	//if !find {
-	//	APIResponse(c, ErrNoPremission, 2)
-	//	return
-	//}
 	fromHx, signHx, nonce, err := engine.NFTTransfer(nT.ContractAddress, nT.From, usr.PrivateKey, nT.To, nT.TokenID)
 	if err != nil {
 		log.Error().Msgf("NFTTransfer err is %s", err.Error())
@@ -710,4 +633,14 @@ func GetWalletList(c *gin.Context) {
 	}
 	APIResponse(c, nil, ac.WalletList)
 	return
+}
+
+// AddLink 添加新链
+func AddLink(c *gin.Context) {
+
+}
+
+// ChangeLink 修改链
+func ChangeLink(c *gin.Context) {
+
 }
