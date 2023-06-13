@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/lmxdawn/wallet/cmd"
+	"github.com/lmxdawn/wallet/server"
 )
 
 // 是否加载文档
@@ -24,6 +24,7 @@ var isSwag bool
 // @name x-token
 func main() {
 
-	cmd.Run(isSwag)
+	//cmd.Run(isSwag)
+	server.Start(false, "config/config-example.yml")
 
 }

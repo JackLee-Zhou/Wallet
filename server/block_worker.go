@@ -19,6 +19,8 @@ type Tran struct {
 
 type ListTrans struct {
 	TransMap *sync.Map
+	From     map[string][]*types.Transaction // 从这些地址转出的交易
+	To       map[string][]*types.Transaction // 转入到这些地址的交易
 }
 
 var TransMap *ListTrans
@@ -74,25 +76,38 @@ func listenBlock(blockNum int64) error {
 			continue
 		}
 
-		// 若是代币交易 则 to 应该是合约地址
-		_, ok := CoinList.Mapping[tx.To().Hex()]
-
-		// 只关心本钱包用户的交易
-
-		// 是所需要监听的代币 或者 原生币交易 则 data 为空
-		if ok || db.CheckWalletIsInDB(msg.To().Hex()) ||
-			db.CheckWalletIsInDB(msg.From().Hex()) {
-			ts := &types.Transaction{
-				BlockNumber: big.NewInt(blockNum),
-				BlockHash:   block.Hash().Hex(),
-				Hash:        tx.Hash().Hex(),
-				From:        msg.From().Hex(),
-				To:          tx.To().Hex(),
-				Value:       tx.Value(),
-			}
-			TransMap.TransMap.Store(ts.Hash, ts)
-			log.Info().Msgf("listenBlock find Trans Hash is %s blockNum is %d", ts.Hash, blockNum)
+		ts := &types.Transaction{
+			BlockNumber: big.NewInt(blockNum),
+			BlockHash:   block.Hash().Hex(),
+			Hash:        tx.Hash().Hex(),
+			From:        msg.From().Hex(),
+			To:          tx.To().Hex(),
+			Value:       tx.Value(),
+			Dirty:       false,
 		}
+		// 先判断是否是本钱包用户的交易
+		if db.CheckWalletIsInDB(msg.From().Hex()) {
+			TransMap.TransMap.Store(ts.Hash, ts)
+			TransMap.From[msg.From().Hex()] = append(TransMap.From[msg.From().Hex()], ts)
+			log.Info().Msgf("listenBlock find Trans Hash is %s from %s blockNum is %d", ts.Hash, msg.From().Hex(), blockNum)
+		} else if db.CheckWalletIsInDB(msg.To().Hex()) {
+			TransMap.TransMap.Store(ts.Hash, ts)
+			TransMap.From[msg.From().Hex()] = append(TransMap.From[msg.From().Hex()], ts)
+			log.Info().Msgf("listenBlock find Trans Hash is %s to %s blockNum is %d", ts.Hash, msg.To().Hex(), blockNum)
+		}
+
+		// 再判断是或否是代币是需要监听的代币
+		// 若是代币交易 则 to 应该是合约地址
+		//_, ok := CoinList.Mapping[tx.To().Hex()]
+		//
+		//// 只关心本钱包用户的交易
+		//
+		//// 是所需要监听的代币 或者 原生币交易 则 data 为空
+		//if ok || db.CheckWalletIsInDB(msg.To().Hex()) {
+		//
+		//} else if ok || db.CheckWalletIsInDB(msg.From().Hex()) {
+		//
+		//}
 	}
 	return nil
 }
@@ -100,55 +115,71 @@ func listenBlock(blockNum int64) error {
 // startGetReceipt 开始获取交易情况
 func startGetReceipt(maxListenLine int) {
 	log.Info().Msgf("startGetReceipt start")
-	go func() {
-		// 不断监听交易状态
-		for {
-			TransMap.TransMap.Range(func(key, value interface{}) bool {
-				ts := value.(*types.Transaction)
-				// 这笔交易已经判断了
-				if ts.HasCheck {
-					return true
-				}
-				log.Info().Msgf("listenReceipt %+v ", ts)
-				hash := common.HexToHash(ts.Hash)
-				receipt, err := ListenHttp.TransactionReceipt(context.Background(), hash)
-				if err != nil {
-					log.Info().Msgf("startGetReceipt TransactionReceipt err is %s", err.Error())
-					return true
-				}
-				latest, err := ListenHttp.BlockNumber(context.Background())
-				if err != nil {
-					log.Info().Msgf("startGetReceipt BlockNumber err is %s", err.Error())
-					return true
-				}
-				// 判断确认数
-				confirms := latest - receipt.BlockNumber.Uint64() + 1
-				if confirms > 5 {
-					return true
-				}
-				status := receipt.Status
-				ts.Status = uint(status)
-				ts.HasCheck = true
-				log.Info().Msgf("startGetReceipt TransactionReceipt %+v", ts)
+	// 不断监听交易状态
+	for {
+		TransMap.TransMap.Range(func(key, value interface{}) bool {
+			ts := value.(*types.Transaction)
+			// 这笔交易已经判断了
+			if ts.HasCheck {
 				return true
-			})
-		}
-	}()
+			}
+			log.Info().Msgf("listenReceipt %+v ", ts)
+			hash := common.HexToHash(ts.Hash)
+			receipt, err := ListenHttp.TransactionReceipt(context.Background(), hash)
+			if err != nil {
+				log.Info().Msgf("startGetReceipt TransactionReceipt err is %s", err.Error())
+				return true
+			}
+			latest, err := ListenHttp.BlockNumber(context.Background())
+			if err != nil {
+				log.Info().Msgf("startGetReceipt BlockNumber err is %s", err.Error())
+				return true
+			}
+			// 判断确认数
+			confirms := latest - receipt.BlockNumber.Uint64() + 1
+			if confirms > 5 {
+				return true
+			}
+			status := receipt.Status
+			ts.Status = uint(status)
+			ts.HasCheck = true
+			log.Info().Msgf("startGetReceipt TransactionReceipt %+v", ts)
+			return true
+		})
+	}
 }
 
-// readTransMap 开始过过滤监听
-func readTransMap() {
-	for {
+// timeToDB 定时写入数据库
+func timeToDB() {
+	log.Info().Msgf("timeToDB start")
 
+	for {
+		TransMap.TransMap.Range(func(key, value interface{}) bool {
+			ts := value.(*types.Transaction)
+			if ts.Dirty {
+				return true
+			}
+			// 只写入交易已经确认的
+			if !ts.HasCheck {
+				return true
+			}
+			db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String())
+			ts.Dirty = true
+			log.Info().Msgf("timeToDB write to db %+v", ts)
+			return true
+		})
 	}
+
 }
 
 func Init() {
 	TransMap = &ListTrans{
 		TransMap: &sync.Map{},
+		From:     map[string][]*types.Transaction{},
+		To:       map[string][]*types.Transaction{},
 	}
 	num, _ := ListenHttp.BlockNumber(context.Background())
 	go listenAllBlock(num)
 	go startGetReceipt(5)
-	//readTransMap()
+	go timeToDB()
 }

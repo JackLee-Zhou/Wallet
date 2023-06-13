@@ -6,8 +6,6 @@ import (
 	"github.com/lmxdawn/wallet/config"
 	"github.com/lmxdawn/wallet/engine"
 	"github.com/rs/zerolog/log"
-	ginSwagger "github.com/swaggo/gin-swagger"
-	"github.com/swaggo/gin-swagger/swaggerFiles"
 )
 
 // Start 启动服务
@@ -90,8 +88,8 @@ func Start(isSwag bool, configPath string) {
 	server.POST("/register", Register)
 
 	//if isSwag {
-	swagHandler := ginSwagger.WrapHandler(swaggerFiles.Handler)
-	server.GET("/swagger/*any", swagHandler)
+	//swagHandler := ginSwagger.WrapHandler(swaggerFiles.Handler)
+	//server.GET("/swagger/*any", swagHandler)
 	//}
 
 	err = server.Run(fmt.Sprintf(":%v", conf.App.Port))
@@ -99,6 +97,6 @@ func Start(isSwag bool, configPath string) {
 		panic("start error")
 	}
 
-	log.Info().Msgf("start success")
+	log.Info().Msgf("start success at %s ", conf.App.Port)
 
 }

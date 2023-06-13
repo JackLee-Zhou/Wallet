@@ -69,11 +69,13 @@ func CreateWallet(c *gin.Context) {
 	if err != nil {
 		log.Info().Msgf("CreateWallet Del err is %s ", err.Error())
 		APIResponse(c, err, nil)
+		return
 	}
 	_, err = db.Rdb.HSet(context.Background(), db.AccountDB, ac.Account, ac).Result()
 	if err != nil {
 		log.Info().Msgf("CreateWallet Set err is %s ", err.Error())
 		APIResponse(c, err, nil)
+		return
 	}
 	res := CreateWalletRes{Address: address}
 

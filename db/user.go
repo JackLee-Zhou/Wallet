@@ -202,10 +202,10 @@ func (u *User) MulSignMode(to, coinName, num string) bool {
 }
 
 // UpDateTransInfo 更新交易数据
-func UpDateTransInfo(hex, from, to, value, coinName string) {
+func UpDateTransInfo(hex, from, to, value string) {
 
 	// 秒级时间戳
-	ts := &Transfer{Hex: hex, From: from, To: to, Value: value, CoinName: coinName, TimeStamp: strconv.Itoa(int(time.Now().UnixMilli()))}
+	ts := &Transfer{Hex: hex, From: from, To: to, Value: value, TimeStamp: strconv.Itoa(int(time.Now().UnixMilli()))}
 
 	_, err := Rdb.HSet(context.Background(), TransferDB, hex, ts).Result()
 	if err != nil {

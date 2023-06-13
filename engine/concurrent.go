@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-type Worker interface {
+type IWorker interface {
 	GetNowBlockNum() (uint64, error)
 	GetTransaction(num uint64) ([]types.Transaction, uint64, error)
 	GetTransactionReceipt(*types.Transaction) error
@@ -40,7 +40,7 @@ type Scheduler interface {
 
 type ConCurrentEngine struct {
 	scheduler Scheduler
-	Worker    Worker
+	Worker    IWorker
 	// 添加新币的时候要修改这个
 	Config   config.EngineConfig
 	Protocol string
@@ -222,7 +222,7 @@ func (c *ConCurrentEngine) createReceiptWorker() {
 					// 存入交易成功的元素
 					c.TransNotify.Store(transaction.Hash, struct{}{})
 					// 是否打入内存中
-					db.UpDateTransInfo(transaction.Hash, transaction.From, transaction.To, transaction.Value.String(), c.CoinName)
+					db.UpDateTransInfo(transaction.Hash, transaction.From, transaction.To, transaction.Value.String())
 				}
 				// TODO 并发
 				delete(eWorker.Pending, transaction.Hash)
@@ -300,11 +300,11 @@ func NewEngine(config config.EngineConfig, isNFT bool) (*ConCurrentEngine, error
 	//	return nil, err
 	//}
 
-	var iworker Worker
+	var iworker IWorker
 	switch config.Protocol {
 	case "eth":
 		worker, err := NewEthWorker(config.Confirms, config.Contract, config.Rpc, isNFT)
-		iworker = Worker(worker)
+		iworker = IWorker(worker)
 		if err != nil {
 			return nil, err
 		}

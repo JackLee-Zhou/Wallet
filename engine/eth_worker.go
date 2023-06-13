@@ -30,6 +30,16 @@ var signCounter *MulSignCounter
 //var MulSignCounter int32
 //var MulSignLocker sync.Mutex
 
+type Worker struct {
+	confirms               uint64 // 需要的确认数
+	http                   *ethclient.Client
+	tokenTransferEventHash common.Hash
+	tokenAbi               abi.ABI             // 合约的abi
+	Pending                map[string]struct{} // 待执行的交易
+	nonceLock              sync.Mutex
+	TransHistory           map[string][]*types.Transaction // 交易历史记录
+}
+
 type EthWorker struct {
 	confirms               uint64 // 需要的确认数
 	http                   *ethclient.Client
@@ -39,7 +49,102 @@ type EthWorker struct {
 	Pending                map[string]struct{} // 待执行的交易
 	nonceLock              sync.Mutex
 	TransHistory           map[string][]*types.Transaction // 交易历史记录
-	isNFT                  bool                            // 是否是 nft
+}
+
+func (w *Worker) GetNowBlockNum() (uint64, error) {
+	blockNumber, err := w.http.BlockNumber(context.Background())
+	if err != nil {
+		return 0, err
+	}
+	return blockNumber, nil
+}
+
+func (w *Worker) GetTransaction(num uint64) ([]types.Transaction, uint64, error) {
+	// 获取的是最新的区块
+	nowBlockNumber, err := w.GetNowBlockNum()
+	if err != nil {
+		return nil, num, err
+	}
+	toBlock := num + 100
+	// 传入的num为0，表示最新块
+	if num == 0 {
+		// 表示从创世区块开始遍历
+		toBlock = nowBlockNumber
+	} else if toBlock > nowBlockNumber {
+		toBlock = nowBlockNumber
+	}
+	//if w.token == "" {
+	//	return e.getBlockTransaction(num)
+	//} else {
+	//	return e.getTokenTransaction(num, toBlock)
+	//}
+	return nil, 0, err
+}
+
+func (w *Worker) GetTransactionReceipt(transaction *types.Transaction) error {
+	hash := common.HexToHash(transaction.Hash)
+
+	receipt, err := w.http.TransactionReceipt(context.Background(), hash)
+	if err != nil {
+		return err
+	}
+
+	// 获取最新区块
+	latest, err := w.http.BlockNumber(context.Background())
+	if err != nil {
+		return err
+	}
+
+	// 判断确认数
+	confirms := latest - receipt.BlockNumber.Uint64() + 1
+	if confirms < w.confirms {
+		return errors.New("the number of confirmations is not satisfied")
+	}
+
+	status := receipt.Status
+	transaction.Status = uint(status)
+
+	return nil
+}
+
+func (w *Worker) GetBalance(address string) (*big.Int, error) {
+	// 如果不是合约
+	//account := common.HexToAddress(address)
+	//if e.token == "" {
+	//	balance, err := w.http.BalanceAt(context.Background(), account, nil)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	return balance, nil
+	//} else {
+	//	res, err := w.callContract(e.token, "balanceOf", account)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	balance := big.NewInt(0)
+	//	balance.SetBytes(res)
+	//	return balance, nil
+	//}
+	return (nil), nil
+}
+
+func (w *Worker) CreateWallet() (*types.Wallet, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (w *Worker) Transfer(privateKeyStr string, fromAddress, toAddress string, value *big.Int, nonce uint64) (string, string, uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (w *Worker) GetGasPrice() (string, error) {
+	// 能这样做 ?
+	price, err := w.http.SuggestGasPrice(context.Background())
+	if err != nil {
+		return "", err
+	}
+	return price.String(), nil
 }
 
 // GetGasPrice 获取最新的燃料价格
@@ -93,7 +198,6 @@ func NewEthWorker(confirms uint64, contract string, url string, isNFT bool) (*Et
 		tokenAbi:               tokenAbi,
 		Pending:                make(map[string]struct{}), // 大小
 		TransHistory:           make(map[string][]*types.Transaction),
-		isNFT:                  isNFT,
 	}, nil
 }
 
@@ -308,6 +412,24 @@ func (e *EthWorker) GetAddressByPrivateKey(privateKeyStr string) (string, error)
 	return fromAddress.Hex(), nil
 }
 
+func (w *Worker) callContract(contractAddress string, method string, params ...interface{}) ([]byte, error) {
+	input, _ := w.tokenAbi.Pack(method, params...)
+
+	to := common.HexToAddress(contractAddress)
+	msg := ethereum.CallMsg{
+		To:   &to,
+		Data: input,
+	}
+
+	hex, err := w.http.CallContract(context.Background(), msg, nil)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return hex, nil
+}
+
 // callContract 查询智能合约
 func (e *EthWorker) callContract(contractAddress string, method string, params ...interface{}) ([]byte, error) {
 
@@ -356,12 +478,12 @@ func (e *EthWorker) Transfer(privateKeyStr string, fromAddress, toAddress string
 	}
 
 	// NFT 转账的时候  value 是 tokenID 值
-	return e.sendTransaction(e.token, privateKeyStr, toAddress, value, value20, nonce, data, tokenID, e.isNFT)
+	return e.sendTransaction(e.token, privateKeyStr, toAddress, value, value20, nonce, data, tokenID)
 }
 
 // sendTransaction 创建并发送交易
 func (e *EthWorker) sendTransaction(contractAddress string, privateKeyStr string,
-	toAddress string, value *big.Int, value20 *big.Int, nonce uint64, data []byte, nftID *big.Int, isNFT bool) (string, string, uint64, error) {
+	toAddress string, value *big.Int, value20 *big.Int, nonce uint64, data []byte, nftID *big.Int) (string, string, uint64, error) {
 	//var trueValue *big.Int
 	//trueValue = value
 	privateKey, err := crypto.HexToECDSA(privateKeyStr)

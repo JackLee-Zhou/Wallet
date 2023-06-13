@@ -17,4 +17,5 @@ type Transaction struct {
 	Value       *big.Int // 交易数量
 	Status      uint     // 状态（0：未完成，1：已完成）
 	HasCheck    bool     // 是否已经检查过`
+	Dirty       bool     // 是否已经写入数据库 false 未写入  true 已写入
 }
