@@ -179,7 +179,7 @@ func AddNewCoin(c *gin.Context) {
 
 	// 更新用户数据
 	db.UpDataUserInfo(usr)
-	AddCoin(newCoin.CoinName, newCoin.ContractAddress, false)
+	AddCoin(newCoin.CoinName, newCoin.ContractAddress, false, false)
 	APIResponse(c, nil, usr.Assets[usr.CurrentNetWork.NetWorkName].Coin)
 	return
 }
@@ -586,7 +586,7 @@ func AddNFT(c *gin.Context) {
 	}
 	tokenID, _ := strconv.Atoi(aT.TokenID)
 
-	if !engine.CheckIsOwner(aT.ContractAddress, aT.UserAddress, tokenID) {
+	if _, ok := engine.CheckIsOwner(aT.ContractAddress, aT.UserAddress, tokenID); !ok {
 		APIResponse(c, ErrNotOwnNft, nil)
 		return
 	}
@@ -596,6 +596,8 @@ func AddNFT(c *gin.Context) {
 		APIResponse(c, err, nil)
 		return
 	}
+	// 全局的存一下 仅做交易过滤使用
+	AddCoin("", aT.ContractAddress, false, true)
 	APIResponse(c, nil, db.GetUserFromDB(aT.UserAddress))
 }
 

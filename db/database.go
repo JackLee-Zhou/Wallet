@@ -14,9 +14,10 @@ type WalletItem struct {
 
 // CoinType 币种的结构
 type CoinType struct {
-	Protocol        string `json:"protocol"`
+	//Protocol        string `json:"protocol"`
 	ContractAddress string `json:"contractAddress"`
 	CoinName        string `json:"coinName"`
+	IsNFT           bool   `json:"isNFT"`
 }
 
 func (c CoinType) MarshalBinary() ([]byte, error) {
@@ -61,7 +62,6 @@ func UpDataCoinInfoToDB(coinName, contractAddress string) bool {
 		return false
 	}
 	ct := &CoinType{
-		Protocol:        "eth",
 		ContractAddress: contractAddress,
 		CoinName:        coinName,
 	}

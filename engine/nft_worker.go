@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/lmxdawn/wallet/types"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"math/big"
@@ -178,18 +179,33 @@ func send721Transaction(contractAddress string, privateKeyStr string, data []byt
 }
 
 // CheckIsOwner 检查是否是 NFT 的拥有者
-func CheckIsOwner(contract, usr string, tokenID int) bool {
+func CheckIsOwner(contract, usr string, tokenID int) (string, bool) {
 	address, err := NFT.callContract(contract, "ownerOf", big.NewInt(int64(tokenID)))
 	if err != nil {
 		log.Error().Msgf("callContract err is %s ", err.Error())
-		return false
+		return "", false
 	}
 
 	log.Info().Msgf("address is %s ", common.BytesToAddress(address).Hex())
 	if common.BytesToAddress(address).Hex() != usr {
-		return false
+		return common.BytesToAddress(address).Hex(), false
 	}
-	return true
+	return common.BytesToAddress(address).Hex(), true
+}
+
+func (nw *NFTWorker) UnPackTransferFrom(data []byte) *types.TransferFrom {
+	res := &types.TransferFrom{}
+	if method, ok := nw.tokenAbi.Methods["transferFrom"]; ok {
+		params, err := method.Inputs.Unpack(data)
+		if err != nil {
+			log.Error().Msgf("UnPackTransferFrom err is %s ", err.Error())
+			return nil
+		}
+		res.From = params[0].(common.Address).Hex()
+		res.To = params[1].(common.Address).Hex()
+		res.TokenID = params[2].(*big.Int)
+	}
+	return res
 }
 
 func (nw *NFTWorker) callContract(contract string, method string, args ...interface{}) ([]byte, error) {

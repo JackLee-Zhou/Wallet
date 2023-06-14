@@ -60,6 +60,7 @@ type Transfer struct {
 	Value     string
 	CoinName  string // 交易的币种 为空表示原生币
 	TimeStamp string // 这笔交易的时间戳
+	Data      []byte // 交易数据
 }
 
 type Account struct {
@@ -212,6 +213,7 @@ func GetAllAddress() []*User {
 func UpDataUserTransInfo(address, contractAddress string, trans []*Transfer) {
 	usr := GetUserFromDB(address)
 	if usr == nil {
+		log.Info().Msgf("UpDataUserTransInfo GetUserFromDB usr not in db,address is %s ", address)
 		return
 	}
 	for _, v := range usr.Assets[usr.CurrentNetWork.NetWorkName].Coin {
@@ -286,8 +288,12 @@ func UpDateTransInfo(hex, from, to, value, coinName string) {
 	}
 	//	 过滤 更新单个币的活动
 	UpDataUserTransInfo(from, coinName, []*Transfer{ts})
+
+	// 排除20或721合约交易 不然在获取用户的地方会报错
+	//if ts.To != ts.CoinName {  已优化 获取真正的 接收者
 	// 这里 若是合约转账 则 To 为 address(0) 地址
 	UpDataUserTransInfo(to, coinName, []*Transfer{ts})
+	//}
 
 }
 

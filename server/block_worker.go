@@ -5,6 +5,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/lmxdawn/wallet/db"
+	"github.com/lmxdawn/wallet/engine"
 	"github.com/lmxdawn/wallet/types"
 	"github.com/rs/zerolog/log"
 	"math/big"
@@ -83,6 +84,7 @@ func listenBlock(blockNum int64) error {
 			From:        msg.From().Hex(),
 			To:          tx.To().Hex(),
 			Value:       tx.Value(),
+			Data:        msg.Data(),
 			Dirty:       false,
 		}
 		// 先判断是否是本钱包用户的交易
@@ -149,11 +151,24 @@ func timeToDB() {
 			if !ts.HasCheck {
 				return true
 			}
+
+			// TODO 监听 NFT 的话就要在这里也做处理 做初步区分
 			coin, ok := CoinList.Mapping[ts.To]
-			if ok {
-				db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), coin.ContractAddress)
-			} else {
+			if !ok {
+				// 原生币
 				db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), "")
+			}
+
+			//	尝试解析是否是NFT
+			if coin.IsNFT {
+				if transferFrom := engine.NFT.UnPackTransferFrom(ts.Data); transferFrom != nil {
+					db.UpDateTransInfo(ts.Hash, ts.From, transferFrom.To, ts.Value.String(), coin.ContractAddress)
+				}
+			}
+
+			// To 会是合约地址 TODO 解析出真正的接受用户地址地址
+			if transfer := engine.EWorker.UpPackTransfer(ts.Data); transfer != nil {
+				db.UpDateTransInfo(ts.Hash, ts.From, transfer.To, transfer.Value.String(), coin.ContractAddress)
 			}
 
 			ts.Dirty = true
