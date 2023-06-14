@@ -323,6 +323,7 @@ func (w *Worker) GetAddressByPrivateKey(privateKeyStr string) (string, error) {
 	return fromAddress.Hex(), nil
 }
 
+// callContract 调用合约 这里可以传入自定的 method 和 params
 func (w *Worker) callContract(contractAddress string, method string, params ...interface{}) ([]byte, error) {
 	input, _ := w.tokenAbi.Pack(method, params...)
 
@@ -332,6 +333,7 @@ func (w *Worker) callContract(contractAddress string, method string, params ...i
 		Data: input,
 	}
 
+	// 直接 call 合约 用于查询操作 不上链的
 	hex, err := w.http.CallContract(context.Background(), msg, nil)
 
 	if err != nil {
@@ -387,7 +389,6 @@ func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
 		toAddressTmp := common.HexToAddress(toAddress)
 		toAddressHex = &toAddressTmp
 	}
-
 	// 20 币和 NFT 交易都可以通过这里 做处理 防止 value 传值错误
 	//if contractAddress != "" {
 	//	value = big.NewInt(0)

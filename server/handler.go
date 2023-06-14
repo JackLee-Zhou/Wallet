@@ -584,16 +584,19 @@ func AddNFT(c *gin.Context) {
 		HandleValidatorError(c, err)
 		return
 	}
-	// TODO 这里应该是去链上查询这个 nft 是否是这个人的 这里暂时不做处理
-	// 走添加新币的 流程 但是特殊判断是否是 NFT
+	tokenID, _ := strconv.Atoi(aT.TokenID)
 
+	if !engine.CheckIsOwner(aT.ContractAddress, aT.UserAddress, tokenID) {
+		APIResponse(c, ErrNotOwnNft, nil)
+		return
+	}
 	usr := db.GetUserFromDB(aT.UserAddress)
 	err := usr.ImportNFTToDB(aT.ContractAddress, aT.TokenID)
 	if err != nil {
 		APIResponse(c, err, nil)
 		return
 	}
-	APIResponse(c, nil, nil)
+	APIResponse(c, nil, db.GetUserFromDB(aT.UserAddress))
 }
 
 // NFTTransfer 721 nft 交易

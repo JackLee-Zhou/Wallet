@@ -7,9 +7,11 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/consensus/misc"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"math/big"
@@ -115,22 +117,46 @@ func send721Transaction(contractAddress string, privateKeyStr string, data []byt
 	if err != nil {
 		return "", "", 0, err
 	}
+	number, err := NFT.http.BlockNumber(context.Background())
+	if err != nil {
+		return "", "", 0, err
+	}
 
+	// 获取 baseFee
+	block, err := NFT.http.BlockByNumber(context.Background(), big.NewInt(int64(number)))
+	if err != nil {
+		log.Info().Msgf("BlockByNumber err is %s ", err.Error())
+		return "", "", 0, err
+	}
+	config := params.MainnetChainConfig
+	baseFee := misc.CalcBaseFee(config, block.Header())
+
+	// NFT 转账 polygon 没有计算 baseFee
 	txData := &ethTypes.DynamicFeeTx{
 		Nonce: nonce,
 		To:    toAddressHex,
 		// gas 单位上限
-		Gas: gasLimit * 2,
-		// 设置的最高交易费用
-		GasFeeCap: gasPrice.Mul(gasPrice, big.NewInt(3)),
+		Gas:       gasLimit * 2,
+		GasFeeCap: gasPrice.Add(gasPrice, baseFee),
 		GasTipCap: gasTip,
 		Data:      data,
-		// (gasFeeCap+GasTipCap)*Gas = Transaction Fee
 	}
-	tips := txData.GasFeeCap.Add(txData.GasFeeCap, txData.GasTipCap)
-	log.Info().Msgf("tips is %s ", tips.String())
-	log.Info().Msgf("gasFee is %s ", tips.Mul(tips, big.NewInt(int64(txData.Gas))).String())
-	log.Info().Msgf("txData is %+v ", txData)
+	// 使用type 0 的方式能够完成交易
+	//txData := &ethTypes.LegacyTx{
+	//	Nonce: nonce,
+	//	To:    toAddressHex,
+	//	// gas 单位上限
+	//	Gas: gasLimit * 5,
+	//	// 设置的最高交易费用
+	//	GasPrice: gasPrice,
+	//	GasTipCap: gasTip,
+	//	Data: data,
+	//	// (gasFeeCap+GasTipCap)*Gas = Transaction Fee
+	//}
+	//tips := txData.GasFeeCap.Add(txData.GasFeeCap, txData.GasTipCap)
+	//log.Info().Msgf("tips is %s ", tips.String())
+	//log.Info().Msgf("gasFee is %s ", tips.Mul(tips, big.NewInt(int64(txData.Gas))).String())
+	//log.Info().Msgf("txData is %+v ", txData)
 	tx := ethTypes.NewTx(txData)
 
 	chainID, err := NFT.http.NetworkID(context.Background())
@@ -149,6 +175,36 @@ func send721Transaction(contractAddress string, privateKeyStr string, data []byt
 	}
 
 	return fromAddress.Hex(), signTx.Hash().Hex(), nonce, nil
+}
+
+// CheckIsOwner 检查是否是 NFT 的拥有者
+func CheckIsOwner(contract, usr string, tokenID int) bool {
+	address, err := NFT.callContract(contract, "ownerOf", big.NewInt(int64(tokenID)))
+	if err != nil {
+		log.Error().Msgf("callContract err is %s ", err.Error())
+		return false
+	}
+
+	log.Info().Msgf("address is %s ", common.BytesToAddress(address).Hex())
+	if common.BytesToAddress(address).Hex() != usr {
+		return false
+	}
+	return true
+}
+
+func (nw *NFTWorker) callContract(contract string, method string, args ...interface{}) ([]byte, error) {
+	input, _ := nw.tokenAbi.Pack(method, args...)
+	to := common.HexToAddress(contract)
+	msg := ethereum.CallMsg{
+		To:   &to,
+		Data: input,
+	}
+	hex, err := nw.http.CallContract(context.Background(), msg, nil)
+	if err != nil {
+		log.Error().Msgf("CallContract err is %s ", err.Error())
+		return nil, err
+	}
+	return hex, nil
 }
 
 // makeEthERC721TransferData 构建 nft 交易数据

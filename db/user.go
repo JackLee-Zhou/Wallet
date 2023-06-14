@@ -189,6 +189,7 @@ func GetAllAddress() []*User {
 		// 结构变更兼容
 		if usr.Assets == nil {
 			trans := []*Transfer{}
+			// 交给定时器去刷新
 			defaultAsset := &CoinAssets{
 				ContractAddress: "",
 				Symbol:          "MATIC",
@@ -285,6 +286,7 @@ func UpDateTransInfo(hex, from, to, value, coinName string) {
 	}
 	//	 过滤 更新单个币的活动
 	UpDataUserTransInfo(from, coinName, []*Transfer{ts})
+	// 这里 若是合约转账 则 To 为 address(0) 地址
 	UpDataUserTransInfo(to, coinName, []*Transfer{ts})
 
 }

@@ -5,7 +5,7 @@ import "fmt"
 // nolint: golint
 var (
 	OK                    = &Errno{Code: 0, Message: "OK"}
-	InternalServerError   = &Errno{Code: 10001, Message: "Internal server error"}
+	InternalServerError   = &Errno{Code: 10001, Message: "服务器异常"}
 	ErrToken              = &Errno{Code: 10002, Message: "token错误"}
 	ErrParam              = &Errno{Code: 10003, Message: "参数有误"}
 	ErrNotData            = &Errno{Code: 10004, Message: "没有数据"}
@@ -24,6 +24,7 @@ var (
 	ErrSame20Token        = &Errno{Code: 10017, Message: "存在相同代币"}
 	ErrNoCoin             = &Errno{Code: 10018, Message: "代币不存在"}
 	ErrNoAccount          = &Errno{Code: 10019, Message: "账户不存在"}
+	ErrNotOwnNft          = &Errno{Code: 10020, Message: "没有拥有该NFT"}
 )
 
 // Errno ...
