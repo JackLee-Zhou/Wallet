@@ -50,7 +50,7 @@ type Database interface {
 }
 
 // UpDataCoinInfoToDB 想数据库中存入数据 判断这个是否存在
-func UpDataCoinInfoToDB(coinName, contractAddress string) bool {
+func UpDataCoinInfoToDB(coinName, contractAddress string, isNFT bool) bool {
 	exit, err := Rdb.HExists(context.Background(), CoinDB, contractAddress).Result()
 	if err != nil {
 		log.Error().Msgf("UpDataCoinInfoToDB err is %s ", err.Error())
@@ -64,6 +64,7 @@ func UpDataCoinInfoToDB(coinName, contractAddress string) bool {
 	ct := &CoinType{
 		ContractAddress: contractAddress,
 		CoinName:        coinName,
+		IsNFT:           isNFT,
 	}
 	_, err = Rdb.HSet(context.Background(), CoinDB, contractAddress, ct).Result()
 	if err != nil {

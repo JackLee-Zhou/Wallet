@@ -187,7 +187,9 @@ func CheckIsOwner(contract, usr string, tokenID int) (string, bool) {
 	}
 
 	log.Info().Msgf("address is %s ", common.BytesToAddress(address).Hex())
-	if common.BytesToAddress(address).Hex() != usr {
+	user := common.HexToAddress(usr)
+	// 不区分大小写的比较
+	if user != common.BytesToAddress(address) {
 		return common.BytesToAddress(address).Hex(), false
 	}
 	return common.BytesToAddress(address).Hex(), true
@@ -196,7 +198,7 @@ func CheckIsOwner(contract, usr string, tokenID int) (string, bool) {
 func (nw *NFTWorker) UnPackTransferFrom(data []byte) *types.TransferFrom {
 	res := &types.TransferFrom{}
 	if method, ok := nw.tokenAbi.Methods["transferFrom"]; ok {
-		params, err := method.Inputs.Unpack(data)
+		params, err := method.Inputs.Unpack(data[4:])
 		if err != nil {
 			log.Error().Msgf("UnPackTransferFrom err is %s ", err.Error())
 			return nil

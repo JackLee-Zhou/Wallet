@@ -19,16 +19,11 @@ func Start(isSwag bool, configPath string) {
 	if err != nil || len(conf.Engines) == 0 {
 		panic("Failed to load configuration")
 	}
+	// 若要设置预设链 则
 	err = engine.NewWorker(5, conf.Engines[0].Rpc)
 	if err != nil {
 		log.Fatal().Msgf("NewWorker err is %s ", err.Error())
 		return
-	}
-
-	if isSwag {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.SetMode(gin.ReleaseMode)
 	}
 	err = engine.NewNFTWorker(conf.Engines[0].Rpc)
 	if err != nil {
@@ -38,10 +33,6 @@ func Start(isSwag bool, configPath string) {
 	// 中间件
 	server.Use(gin.Logger())
 	server.Use(gin.Recovery())
-	//server.Use(SetEngine(engines...))
-	//server.Use(start20Token())
-	//server.Use(AuthRequired())
-	//server.Use(sessions.Sessions("Session", store))
 	auth := server.Group("/", AuthRequired())
 	{
 		auth.POST("/createWallet", CreateWallet)
@@ -75,7 +66,6 @@ func Start(isSwag bool, configPath string) {
 	// 登录检测
 	server.POST("/login", Login)
 	server.POST("/register", Register)
-
 	err = server.Run(fmt.Sprintf(":%v", conf.App.Port))
 	if err != nil {
 		panic("start error")

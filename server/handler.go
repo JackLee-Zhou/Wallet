@@ -172,10 +172,7 @@ func AddNewCoin(c *gin.Context) {
 	})
 
 	// 用户部分要更新 但是不再增加监听 先添加监听 再加用户数据
-	if ok := db.UpDataCoinInfoToDB(newCoin.CoinName, newCoin.ContractAddress); !ok {
-		APIResponse(c, ErrSame20Token, nil)
-		return
-	}
+	db.UpDataCoinInfoToDB(newCoin.CoinName, newCoin.ContractAddress, false)
 
 	// 更新用户数据
 	db.UpDataUserInfo(usr)
@@ -591,6 +588,10 @@ func AddNFT(c *gin.Context) {
 		return
 	}
 	usr := db.GetUserFromDB(aT.UserAddress)
+	if usr == nil {
+		APIResponse(c, ErrWalletNotInDB, nil)
+		return
+	}
 	err := usr.ImportNFTToDB(aT.ContractAddress, aT.TokenID)
 	if err != nil {
 		APIResponse(c, err, nil)
@@ -598,6 +599,7 @@ func AddNFT(c *gin.Context) {
 	}
 	// 全局的存一下 仅做交易过滤使用
 	AddCoin("", aT.ContractAddress, false, true)
+	db.UpDataCoinInfoToDB("", aT.ContractAddress, true)
 	APIResponse(c, nil, db.GetUserFromDB(aT.UserAddress))
 }
 
@@ -613,7 +615,10 @@ func NFTTransfer(c *gin.Context) {
 	}
 	// 检查用户的账户中是否有这个钱包地址
 	ac := db.GetAccountInfo(account)
-
+	// 先检查一下是否导入了这个代币
+	if _, ok := CoinList.Mapping[nT.ContractAddress]; !ok {
+		APIResponse(c, ErrNotOwnNft, nil)
+	}
 	log.Debug().Msgf("ac.WalletList is %v from account is %s ", ac.WalletList, nT.From)
 	usr := db.GetUserFromDB(nT.From)
 	fromHx, signHx, nonce, err := engine.NFTTransfer(nT.ContractAddress, nT.From, usr.PrivateKey, nT.To, nT.TokenID)

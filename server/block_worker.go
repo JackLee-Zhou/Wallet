@@ -159,16 +159,18 @@ func timeToDB() {
 				db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), "")
 			}
 
-			//	尝试解析是否是NFT
-			if coin.IsNFT {
-				if transferFrom := engine.NFT.UnPackTransferFrom(ts.Data); transferFrom != nil {
-					db.UpDateTransInfo(ts.Hash, ts.From, transferFrom.To, ts.Value.String(), coin.ContractAddress)
+			if coin != nil {
+				//	尝试解析是否是NFT
+				if coin.IsNFT {
+					if transferFrom := engine.NFT.UnPackTransferFrom(ts.Data); transferFrom != nil {
+						db.UpDateTransInfo(ts.Hash, ts.From, transferFrom.To, ts.Value.String(), coin.ContractAddress)
+					}
+				} else {
+					// To 会是合约地址 TODO 解析出真正的接受用户地址地址
+					if transfer := engine.EWorker.UpPackTransfer(ts.Data); transfer != nil {
+						db.UpDateTransInfo(ts.Hash, ts.From, transfer.To, transfer.Value.String(), coin.ContractAddress)
+					}
 				}
-			}
-
-			// To 会是合约地址 TODO 解析出真正的接受用户地址地址
-			if transfer := engine.EWorker.UpPackTransfer(ts.Data); transfer != nil {
-				db.UpDateTransInfo(ts.Hash, ts.From, transfer.To, transfer.Value.String(), coin.ContractAddress)
 			}
 
 			ts.Dirty = true
