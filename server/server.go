@@ -31,6 +31,7 @@ func Start(isSwag bool, configPath string) {
 	}
 	server := gin.Default()
 	// 中间件
+	server.Use(Cors())
 	server.Use(gin.Logger())
 	server.Use(gin.Recovery())
 	auth := server.Group("/", AuthRequired())
@@ -61,11 +62,13 @@ func Start(isSwag bool, configPath string) {
 		auth.POST("/addLink", AddLink)
 		auth.POST("/changeLink", ChangeLink)
 		auth.POST("/importWallet", ImportWallet)
-
+		auth.POST("/cancel", Cancel)
+		auth.POST("/speedUp", SpeedUp)
 	}
 	// 登录检测
 	server.POST("/login", Login)
 	server.POST("/register", Register)
+	server.POST("/callContract", CallContract)
 	err = server.Run(fmt.Sprintf(":%v", conf.App.Port))
 	if err != nil {
 		panic("start error")

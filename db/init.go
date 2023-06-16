@@ -15,6 +15,7 @@ const (
 	AccountDB  = "Account"
 	LoginDB    = "Login"
 	CoinDB     = "Coin"
+	PolygonDB  = "PolygonBlock"
 )
 
 // Init 数据库链接初始化

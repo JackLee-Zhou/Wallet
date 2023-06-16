@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"github.com/btcsuite/websocket"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/gin-gonic/gin"
 	"github.com/lmxdawn/wallet/db"
 	"github.com/lmxdawn/wallet/engine"
@@ -261,7 +263,7 @@ func Transaction(c *gin.Context) {
 	res.FromHex = fromHex
 	res.SignHax = signHex
 	res.Nonce = nonce
-	log.Info().Msgf("执行成功")
+	log.Info().Msgf("交易发送执行成功")
 	APIResponse(c, nil, res)
 	return
 }
@@ -643,6 +645,89 @@ func GetWalletList(c *gin.Context) {
 	}
 	APIResponse(c, nil, ac.WalletList)
 	return
+}
+
+func SpeedUp(c *gin.Context) {
+	var sR SpeedUpReq
+	var res SendTransactionRes
+	if err := c.ShouldBindJSON(&sR); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	ac := db.GetUserFromDB(sR.Address)
+	sp, s, u, err := engine.EWorker.SpeedUp(ac.PrivateKey, sR.TxHash)
+	if err != nil {
+		log.Info().Msgf("Cancel err is %s ", err.Error())
+		APIResponse(c, err, nil)
+		return
+	}
+	res.FromHex = sp
+	res.SignHax = s
+	res.Nonce = u
+	APIResponse(c, nil, res)
+
+}
+
+func Cancel(c *gin.Context) {
+	var cR CancelReq
+	var res SendTransactionRes
+	if err := c.ShouldBindJSON(&cR); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	ac := db.GetUserFromDB(cR.Address)
+	cancel, s, u, err := engine.EWorker.Cancel(ac.PrivateKey, cR.Address, cR.TxHash)
+	if err != nil {
+		log.Info().Msgf("Cancel err is %s ", err.Error())
+		APIResponse(c, err, nil)
+		return
+	}
+	res.FromHex = cancel
+	res.SignHax = s
+	res.Nonce = u
+	APIResponse(c, nil, res)
+
+}
+
+// CallContract 直接调用ABI
+func CallContract(c *gin.Context) {
+	var aR CallContractReq
+	var res SendTransactionRes
+	if err := c.ShouldBindJSON(&aR); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	log.Info().Msgf("aR is %v", aR)
+	from := common.HexToAddress(aR.From)
+	ac := db.GetUserFromDB(from.Hex())
+	if ac == nil {
+		APIResponse(c, ErrWalletNotInDB, nil)
+		return
+	}
+	val := new(big.Int)
+	log.Info().Msgf("aR.Value is %s", aR.Value[2:])
+	val.SetString(aR.Value[2:], 16)
+	toTemp := common.HexToAddress(aR.To)
+	dec, err := hexutil.Decode(aR.Data)
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+	tx := &ethTypes.DynamicFeeTx{
+		To:    &toTemp,
+		Value: val,
+		Data:  dec,
+	}
+	contractTrans, s, u, err := engine.EWorker.SendContractTrans(ac.PrivateKey, tx)
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+	res.FromHex = contractTrans
+	res.SignHax = s
+	res.Nonce = u
+	APIResponse(c, nil, res)
+
 }
 
 // AddLink 添加新链

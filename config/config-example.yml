@@ -7,7 +7,7 @@ server:
 engines:
   # 以太坊主币
   - network: Polygon
-    rpc: https://polygon-mumbai.blockpi.network/v1/rpc/public
+    rpc: https://polygon-mumbai-bor.publicnode.com
   - network: Goerli
     rpc: https://ethereum-goerli.publicnode.com
 

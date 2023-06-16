@@ -121,6 +121,28 @@ type RegisterReq struct {
 	PassWD  string `json:"passWD" binding:"required"`  // 传入的密码
 }
 
+type SpeedUpReq struct {
+	Address string `json:"address" binding:"required"` // 钱包地址
+	TxHash  string `json:"txHash" binding:"required"`  // 交易哈希
+	//几倍加速?
+}
+
+type CallContractReq struct {
+	From                 string `json:"from" binding:"required"` // 钱包地址
+	To                   string `json:"to" binding:"required"`   // 合约地址
+	Data                 string `json:"data" `                   // 数据
+	Value                string `json:"value"`                   // 金额
+	Gas                  uint64 `json:"gas" `                    // gas
+	GasPrice             string `json:"gasPrice" `               // gasPrice
+	MaxFeePerGas         string `json:"maxFeePerGas" `           // maxFeePerGas
+	MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas" `   // maxProfitGas
+}
+
+type CancelReq struct {
+	Address string `json:"address" binding:"required"` // 钱包地址
+	TxHash  string `json:"txHash" binding:"required"`  // 交易哈希
+}
+
 // AddNFTReq 向钱中加入 NFT
 type AddNFTReq struct {
 	UserAddress     string `json:"userAddress" binding:"required"` // 用户的钱包地址

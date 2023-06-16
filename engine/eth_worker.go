@@ -23,9 +23,6 @@ type MulSignCounter struct {
 	Lock    sync.Locker
 }
 
-// PendingList 未完成的交易列表
-var PendingList *sync.Map
-
 var signCounter *MulSignCounter
 
 type Worker struct {
@@ -33,6 +30,8 @@ type Worker struct {
 	http                   *ethclient.Client
 	tokenTransferEventHash common.Hash
 	tokenAbi               abi.ABI // 合约的abi
+	// pendingList 未完成的交易列表
+	pending *sync.Map
 	//Pending                map[string]struct{} // 待执行的交易
 	nonceLock sync.Mutex
 	//TransHistory           map[string][]*types.Transaction // 交易历史记录
@@ -40,6 +39,45 @@ type Worker struct {
 
 // EWorker 全局的worker 考虑切链 加Map
 var EWorker *Worker
+
+// IsContract 判断是否是合约地址
+func (w *Worker) IsContract(address string) bool {
+	byteCode, err := w.http.CodeAt(context.Background(), common.HexToAddress(address), nil)
+	if err != nil {
+		log.Error().Msgf("IsContract err is %s", err.Error())
+		return false
+	}
+
+	// 存在 code
+	if len(byteCode) > 0 {
+		return true
+	}
+	return false
+}
+
+// GetPendingByHex 通过交易的hex获取处于Pending状态的交易
+func (w *Worker) GetPendingByHex(txHex string) *types.Transaction {
+	pend, ok := w.pending.Load(txHex)
+	if !ok {
+		log.Info().Msgf("GetPendingByHex target is not exist %s ", txHex)
+		return nil
+	}
+	return pend.(*types.Transaction)
+
+}
+
+// RemovePendingByHex 通过交易的hex删除处于Pending状态的交易
+func (w *Worker) RemovePendingByHex(txHex string) {
+
+	// 检查一下是否存在
+	_, ok := w.pending.Load(txHex)
+	if !ok {
+		log.Info().Msgf("RemovePendingByHex target is not exist %s ", txHex)
+		return
+	}
+	w.pending.Delete(txHex)
+	log.Info().Msgf("RemovePendingByHex target is %s ", txHex)
+}
 
 func NewWorker(confirms uint64, url string) error {
 	http, err := ethclient.Dial(url)
@@ -63,7 +101,7 @@ func NewWorker(confirms uint64, url string) error {
 		http:                   http,
 		tokenTransferEventHash: tokenTransferEventHash,
 		tokenAbi:               tokenAbi,
-		//Pending:                make(map[string]struct{}), // 大小
+		pending:                &sync.Map{},
 		//TransHistory:           make(map[string][]*types.Transaction),
 	}
 	return nil
@@ -344,10 +382,8 @@ func (w *Worker) callContract(contractAddress string, method string, params ...i
 	return hex, nil
 }
 
-func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
-	toAddress string, value *big.Int, value20 *big.Int, nonce uint64, data []byte) (string, string, uint64, error) {
-	//var trueValue *big.Int
-	//trueValue = value
+// SendContractTrans 发送合约交易
+func (w *Worker) SendContractTrans(privateKeyStr string, tx *ethTypes.DynamicFeeTx) (string, string, uint64, error) {
 	privateKey, err := crypto.HexToECDSA(privateKeyStr)
 	if err != nil {
 		return "", "", 0, err
@@ -360,55 +396,150 @@ func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
 	}
 
 	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
-	if nonce <= 0 {
-		// 解决 nonce 竞争问题
-		w.nonceLock.Lock()
-		defer w.nonceLock.Unlock()
-		nonce, err = w.http.PendingNonceAt(context.Background(), fromAddress)
-		if err != nil {
-			return "", "", 0, err
-		}
-
-	}
-
-	var gasLimit uint64
-	//gasLimit = uint64(21000) // 在非合约中的转账 21000 是够的 但是在合约中 这个限制太小
-	gasLimit = uint64(200000) //
-	gasPrice, err := w.http.SuggestGasPrice(context.Background())
+	gasLimit, err := w.http.EstimateGas(context.Background(), ethereum.CallMsg{
+		From:  fromAddress,
+		Value: tx.Value,
+		To:    tx.To,
+		Data:  tx.Data,
+	})
 	if err != nil {
+		log.Error().Msgf("EstimateGas error: %s", err.Error())
 		return "", "", 0, err
 	}
 	gasTip, err := w.http.SuggestGasTipCap(context.Background())
 	if err != nil {
 		return "", "", 0, err
 	}
-	var toAddressHex *common.Address
-	if contractAddress != "" {
-		toAddressTmp := common.HexToAddress(contractAddress)
-		toAddressHex = &toAddressTmp
-	} else {
-		toAddressTmp := common.HexToAddress(toAddress)
-		toAddressHex = &toAddressTmp
+	gasPrice, err := w.http.SuggestGasPrice(context.Background())
+	if err != nil {
+		return "", "", 0, err
 	}
-	// 20 币和 NFT 交易都可以通过这里 做处理 防止 value 传值错误
-	//if contractAddress != "" {
-	//	value = big.NewInt(0)
-	//
-	//	// 这里 因为是转移20代币 转账的操作是发送给合约的，由合约内部进行 transfer 操作，所以这笔交易是发送给 合约的
-	//	contractAddressHex := common.HexToAddress(contractAddress)
-	//	toAddressHex = &contractAddressHex
-	//}
+	w.nonceLock.Lock()
+	defer w.nonceLock.Unlock()
+	tx.Nonce, err = w.http.PendingNonceAt(context.Background(), fromAddress)
+	if err != nil {
+		return "", "", 0, err
+	}
+	tx.GasTipCap = gasTip
+	tx.GasFeeCap = gasPrice
+	tx.Gas = gasLimit * 2
+	txData := ethTypes.NewTx(tx)
+	log.Info().Msgf("tx: %+v", tx)
+	chainID, err := w.http.NetworkID(context.Background())
+	if err != nil {
+		return "", "", 0, err
+	}
 
-	txData := &ethTypes.DynamicFeeTx{
-		Nonce: nonce,
-		To:    toAddressHex,
-		Value: value,
-		Gas:   gasLimit,
-		// 最高的 gas 费
-		GasFeeCap: gasPrice,
-		// 最高小费单价
-		GasTipCap: gasTip,
-		Data:      data,
+	// 签名
+	signTx, err := ethTypes.SignTx(txData, ethTypes.LatestSignerForChainID(chainID), privateKey)
+	if err != nil {
+		return "", "", 0, err
+	}
+
+	err = w.http.SendTransaction(context.Background(), signTx)
+	if err != nil {
+		return "", "", 0, err
+	}
+
+	ts := &types.Transaction{
+		Hash:      txData.Hash().String(),
+		From:      fromAddress.String(),
+		To:        tx.To.String(),
+		Value:     tx.Value,
+		Status:    uint(0),
+		Data:      tx.Data,
+		Nonce:     tx.Nonce,
+		Gas:       tx.Gas,
+		GasFeeCap: tx.GasFeeCap,
+		GasTipCap: tx.GasTipCap,
+	}
+	w.pending.Store(ts.Hash, ts)
+	return fromAddress.Hex(), signTx.Hash().Hex(), tx.Nonce, nil
+}
+
+func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
+	toAddress string, value *big.Int, value20 *big.Int, nonce uint64, data []byte, trans ...*types.Transaction) (string, string, uint64, error) {
+	//var trueValue *big.Int
+	//trueValue = value
+	txData := &ethTypes.DynamicFeeTx{}
+	var toAddressHex *common.Address
+	var gasLimit uint64
+	privateKey, err := crypto.HexToECDSA(privateKeyStr)
+	if err != nil {
+		return "", "", 0, err
+	}
+
+	publicKey := privateKey.Public()
+	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return "", "", 0, errors.New("cannot assert type: publicKey is not of type *ecdsa.PublicKey")
+	}
+
+	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
+	gasTip, err := w.http.SuggestGasTipCap(context.Background())
+	if err != nil {
+		return "", "", 0, err
+	}
+	gasPrice, err := w.http.SuggestGasPrice(context.Background())
+	if err != nil {
+		return "", "", 0, err
+	}
+
+	// 加速减速或者取消
+	if len(trans) != 0 {
+		nonce, err = w.http.PendingNonceAt(context.Background(), fromAddress)
+		// 暂时只支持单一的操作
+		pend := trans[0]
+		toAddressTmp := common.HexToAddress(pend.To)
+		toAddressHex = &toAddressTmp
+		//txData.Data = pend.Data
+		txData.Gas = uint64(28000)
+		txData.GasFeeCap = gasPrice.Mul(gasPrice, big.NewInt(2))
+		txData.GasTipCap = gasTip.Mul(gasTip, big.NewInt(2))
+		txData.To = toAddressHex
+		//txData.Value = pend.Value
+		txData.Nonce = nonce
+	} else {
+		if nonce <= 0 {
+			// 解决 nonce 竞争问题
+			w.nonceLock.Lock()
+			defer w.nonceLock.Unlock()
+			nonce, err = w.http.PendingNonceAt(context.Background(), fromAddress)
+			if err != nil {
+				return "", "", 0, err
+			}
+
+		}
+
+		//gasLimit = uint64(21000) // 在非合约中的转账 21000 是够的 但是在合约中 这个限制太小
+		gasLimit = uint64(28000) //
+
+		if contractAddress != "" {
+			toAddressTmp := common.HexToAddress(contractAddress)
+			toAddressHex = &toAddressTmp
+		} else {
+			toAddressTmp := common.HexToAddress(toAddress)
+			toAddressHex = &toAddressTmp
+		}
+		// 20 币和 NFT 交易都可以通过这里 做处理 防止 value 传值错误
+		//if contractAddress != "" {
+		//	value = big.NewInt(0)
+		//
+		//	// 这里 因为是转移20代币 转账的操作是发送给合约的，由合约内部进行 transfer 操作，所以这笔交易是发送给 合约的
+		//	contractAddressHex := common.HexToAddress(contractAddress)
+		//	toAddressHex = &contractAddressHex
+		//}
+		txData = &ethTypes.DynamicFeeTx{
+			Nonce: nonce,
+			To:    toAddressHex,
+			Value: value,
+			Gas:   gasLimit,
+			// 最高的 gas 费
+			GasFeeCap: gasPrice,
+			// 最高小费单价
+			GasTipCap: gasTip,
+			Data:      data,
+		}
 	}
 
 	//ethTypes.DynamicFeeTx{}
@@ -434,13 +565,18 @@ func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
 	//w.Pending[signTx.Hash().Hex()] = struct{}{}
 
 	// 要落地
-	//ts := &types.Transaction{
-	//	Hash: tx.Hash().String(),
-	//	From: fromAddress.String(),
-	//	To:   txData.To.String(),
-	//	//Value:  trueValue,
-	//	Status: uint(0),
-	//}
+	ts := &types.Transaction{
+		Hash: tx.Hash().String(),
+		From: fromAddress.String(),
+		To:   txData.To.String(),
+		//Value:  trueValue,
+		Status:    uint(0),
+		Data:      data,
+		Nonce:     nonce,
+		Gas:       txData.Gas,
+		GasFeeCap: txData.GasFeeCap,
+		GasTipCap: txData.GasTipCap,
+	}
 	//e.TransHistory[fromAddress.String()] = append(e.TransHistory[fromAddress.String()], &types.Transaction{
 	//	Hash: tx.Hash().String(),
 	//	From: fromAddress.String(),
@@ -448,7 +584,7 @@ func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
 	//	//Value:  trueValue,
 	//	Status: uint(0),
 	//})
-	//PendingList.Store(ts.Hash, ts)
+	w.pending.Store(signTx.Hash().Hex(), ts)
 
 	return fromAddress.Hex(), signTx.Hash().Hex(), nonce, nil
 }
@@ -484,6 +620,55 @@ func (w *Worker) UpPackTransfer(data []byte) *types.Transfer {
 	}
 	return res
 
+}
+
+// Cancel 取消
+func (w *Worker) Cancel(privateKey, from, txHash string) (string, string, uint64, error) {
+	//pend := w.GetPendingByHex(txHash)
+	//if pend == nil {
+	//	return "", "", 0, errors.New("target transaction not in pending")
+	//}
+	// 收款方为发送方 设置为取消
+	//pend.To = pend.From
+
+	//tx, isPend, err := w.http.TransactionByHash(context.Background(), common.HexToHash(txHash))
+	//if err != nil {
+	//	log.Error().Msgf("get transaction by hash error %s", err.Error())
+	//	return "", "", 0, err
+	//}
+	//if !isPend {
+	//	log.Info().Msgf("transaction %s not in pending", txHash)
+	//	return "", "", 0, errors.New("target transaction not in pending")
+	//}
+	pend := &types.Transaction{
+		//Data:      tx.Data(),
+		//Gas:       tx.Gas(),
+		//GasFeeCap: tx.GasFeeCap(),
+		//GasTipCap: tx.GasTipCap(),
+		To: from, // 收款方为发送方 设置为取消
+		//Nonce:     tx.Nonce(),
+		//Value:     tx.Value(),
+	}
+
+	transaction, s, u, err := w.sendTransaction("", privateKey, "", nil, nil, 0, nil, pend)
+	if err != nil {
+		return "", "", 0, err
+	}
+	return transaction, s, u, nil
+}
+
+// SpeedUp 加速
+func (w *Worker) SpeedUp(privateKey, txHash string) (string, string, uint64, error) {
+	pend := w.GetPendingByHex(txHash)
+	if pend == nil {
+		return "", "", 0, errors.New("target transaction not in pending")
+	}
+	// 收款方为发送方 设置为取消
+	transaction, s, u, err := w.sendTransaction("", privateKey, "", nil, nil, 0, nil, pend)
+	if err != nil {
+		return "", "", 0, err
+	}
+	return transaction, s, u, nil
 }
 
 func makeEthERC20TransferData(contractTransferHash common.Hash, toAddress *common.Address, amount *big.Int) ([]byte, error) {

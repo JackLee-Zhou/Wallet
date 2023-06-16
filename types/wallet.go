@@ -29,6 +29,10 @@ type Transaction struct {
 	Hash        string   // 交易hash
 	From        string   // 交易者
 	To          string   // 接收者
+	Nonce       uint64   // 序号
+	Gas         uint64   // gas
+	GasFeeCap   *big.Int // gasFeeCap
+	GasTipCap   *big.Int // gasTipCap
 	Value       *big.Int // 交易数量
 	Data        []byte   // 交易数据
 	Status      uint     // 状态（0：未完成，1：已完成）

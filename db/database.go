@@ -20,6 +20,9 @@ type CoinType struct {
 	IsNFT           bool   `json:"isNFT"`
 }
 
+type Block struct {
+}
+
 func (c CoinType) MarshalBinary() ([]byte, error) {
 	return json.Marshal(c)
 }
@@ -93,4 +96,21 @@ func GetAll20TokenFromDB() (data []*CoinType) {
 		data = append(data, ct)
 	}
 	return
+}
+
+// StoreBlockToDB 存储区块到数据库
+func StoreBlockToDB() {
+
+}
+
+// LoadBlockFromDB 从数据库中读取区块
+func LoadBlockFromDB(blockHash string, blockNumber int64) {
+
+	// 默认先按照 blockNumber 查询
+	if blockNumber != 0 {
+
+	}
+	if blockHash != "" {
+
+	}
 }

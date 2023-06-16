@@ -61,6 +61,7 @@ type Transfer struct {
 	CoinName  string // 交易的币种 为空表示原生币
 	TimeStamp string // 这笔交易的时间戳
 	Data      []byte // 交易数据
+	Status    int32  // 交易的状态  0 等待 1 成功 2 失败
 }
 
 type Account struct {
@@ -141,12 +142,13 @@ func NewWalletUser(address, privateKey, publicKey string) *User {
 
 // GetUserFromDB 根据地址从数据库中获取
 func GetUserFromDB(address string) *User {
+	//addr := strings.ToUpper(address)
 	res, err := Rdb.HGet(context.Background(), UserDB, address).Result()
 	if err != nil {
 		log.Info().Msgf("GetUserFromDB err is %s ", err.Error())
 		return nil
 	}
-	log.Info().Msgf("GetUserFromDB res is %s ", res)
+	//log.Info().Msgf("GetUserFromDB res is %s ", res)
 	usr := &User{}
 	err = json.Unmarshal([]byte(res), usr)
 	if err != nil {
@@ -274,10 +276,10 @@ func (u *User) MulSignMode(to, coinName, num string) bool {
 }
 
 // UpDateTransInfo 更新交易数据
-func UpDateTransInfo(hex, from, to, value, coinName string) {
+func UpDateTransInfo(hex, from, to, value, coinName string, data []byte) {
 
 	// 秒级时间戳
-	ts := &Transfer{Hex: hex, From: from, To: to, Value: value, TimeStamp: strconv.Itoa(int(time.Now().UnixMilli()))}
+	ts := &Transfer{Hex: hex, From: from, To: to, Value: value, TimeStamp: strconv.Itoa(int(time.Now().UnixMilli())), Data: data}
 
 	ts.CoinName = coinName
 	// 更新所有的
@@ -290,10 +292,10 @@ func UpDateTransInfo(hex, from, to, value, coinName string) {
 	UpDataUserTransInfo(from, coinName, []*Transfer{ts})
 
 	// 排除20或721合约交易 不然在获取用户的地方会报错
-	//if ts.To != ts.CoinName {  已优化 获取真正的 接收者
 	// 这里 若是合约转账 则 To 为 address(0) 地址
-	UpDataUserTransInfo(to, coinName, []*Transfer{ts})
-	//}
+	if to != "" {
+		UpDataUserTransInfo(to, coinName, []*Transfer{ts})
+	}
 
 }
 

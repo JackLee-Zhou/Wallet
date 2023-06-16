@@ -67,6 +67,7 @@ func listenBlock(blockNum int64) error {
 		return err
 	}
 	chainID, err := ListenHttp.NetworkID(context.Background())
+
 	for _, tx := range block.Transactions() {
 		// 如果接收方地址为空，则是创建合约的交易，忽略过去
 		if tx.To() == nil {
@@ -83,6 +84,10 @@ func listenBlock(blockNum int64) error {
 			Hash:        tx.Hash().Hex(),
 			From:        msg.From().Hex(),
 			To:          tx.To().Hex(),
+			Gas:         tx.Gas(),
+			GasTipCap:   tx.GasTipCap(),
+			GasFeeCap:   tx.GasFeeCap(),
+			Nonce:       tx.Nonce(),
 			Value:       tx.Value(),
 			Data:        msg.Data(),
 			Dirty:       false,
@@ -113,6 +118,7 @@ func startGetReceipt(maxListenLine int) {
 				return true
 			}
 			hash := common.HexToHash(ts.Hash)
+			// 这里获取的 一定是被执行的交易
 			receipt, err := ListenHttp.TransactionReceipt(context.Background(), hash)
 			if err != nil {
 				log.Info().Msgf("startGetReceipt TransactionReceipt err is %s", err.Error())
@@ -131,6 +137,8 @@ func startGetReceipt(maxListenLine int) {
 			status := receipt.Status
 			ts.Status = uint(status)
 			ts.HasCheck = true
+			// 删除 Pending 中的交易
+			engine.EWorker.RemovePendingByHex(ts.Hash)
 			log.Info().Msgf("startGetReceipt TransactionReceipt %+v", ts)
 			return true
 		})
@@ -154,21 +162,39 @@ func timeToDB() {
 
 			// TODO 监听 NFT 的话就要在这里也做处理 做初步区分
 			coin, ok := CoinList.Mapping[ts.To]
-			if !ok {
-				// 原生币
-				db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), "")
+			// 锻造的话 From 会是 0 地址
+			isFromContract := engine.EWorker.IsContract(ts.From)
+			isToContract := engine.EWorker.IsContract(ts.To)
+
+			// 从合约转入
+			if isFromContract {
+				if !ok {
+					db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), "", ts.Data)
+				} else if coin != nil {
+					db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), coin.ContractAddress, ts.Data)
+				}
 			}
 
-			if coin != nil {
-				//	尝试解析是否是NFT
-				if coin.IsNFT {
-					if transferFrom := engine.NFT.UnPackTransferFrom(ts.Data); transferFrom != nil {
-						db.UpDateTransInfo(ts.Hash, ts.From, transferFrom.To, ts.Value.String(), coin.ContractAddress)
-					}
-				} else {
-					// To 会是合约地址 TODO 解析出真正的接受用户地址地址
-					if transfer := engine.EWorker.UpPackTransfer(ts.Data); transfer != nil {
-						db.UpDateTransInfo(ts.Hash, ts.From, transfer.To, transfer.Value.String(), coin.ContractAddress)
+			// 转入合约
+			if isToContract {
+				if !ok {
+					db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), "", ts.Data)
+				} else if coin != nil {
+					if coin.IsNFT {
+						if transferFrom := engine.NFT.UnPackTransferFrom(ts.Data); transferFrom != nil {
+							db.UpDateTransInfo(ts.Hash, ts.From, transferFrom.To, ts.Value.String(), coin.ContractAddress, ts.Data)
+						} else {
+							// 解析失败 使用传入的 目的地址兜底
+							db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), coin.ContractAddress, ts.Data)
+						}
+					} else {
+						// To 会是合约地址 TODO 解析出真正的接受用户地址地址
+						if transfer := engine.EWorker.UpPackTransfer(ts.Data); transfer != nil {
+							db.UpDateTransInfo(ts.Hash, ts.From, transfer.To, transfer.Value.String(), coin.ContractAddress, ts.Data)
+						} else {
+							// 解析失败 使用传入的 目的地址兜底
+							db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), coin.ContractAddress, ts.Data)
+						}
 					}
 				}
 			}
