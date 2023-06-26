@@ -8,9 +8,11 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/consensus/misc"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/lmxdawn/wallet/types"
 	"github.com/rs/zerolog/log"
 	"math/big"
@@ -26,13 +28,15 @@ type MulSignCounter struct {
 var signCounter *MulSignCounter
 
 type Worker struct {
-	confirms               uint64 // 需要的确认数
+	confirms uint64 // 需要的确认数
+	// 使用 rpc.client 的话就要自己拼接参数 用 ethclient.Client 的话就不用 他包装了一层
 	http                   *ethclient.Client
 	tokenTransferEventHash common.Hash
 	tokenAbi               abi.ABI // 合约的abi
 	// pendingList 未完成的交易列表
 	pending *sync.Map
 	//Pending                map[string]struct{} // 待执行的交易
+	// TODO 这个锁应该放在用户身上去
 	nonceLock sync.Mutex
 	//TransHistory           map[string][]*types.Transaction // 交易历史记录
 }
@@ -256,13 +260,25 @@ func (w *Worker) Transfer(privateKeyStr string, toAddress string, value *big.Int
 	return w.sendTransaction(contractAddress, privateKeyStr, toAddress, value, value20, nonce, data)
 }
 
-func (w *Worker) GetGasPrice() (string, error) {
+func (w *Worker) GetGasPrice() (string, string, error) {
 	// 能这样做 ?
+	number, err := w.http.BlockNumber(context.Background())
+	if err != nil {
+		log.Error().Msgf("GetGasPrice getBlockNumber err:%v", err)
+		return "", "", err
+	}
+	block, err := w.http.BlockByNumber(context.Background(), big.NewInt(int64(number)))
+	if err != nil {
+		log.Error().Msgf("GetGasPrice getBlockByNumber err:%v", err)
+		return "", "", err
+	}
+	config := params.MainnetChainConfig
+	baseFee := misc.CalcBaseFee(config, block.Header())
 	price, err := w.http.SuggestGasPrice(context.Background())
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return price.String(), nil
+	return price.String(), baseFee.String(), nil
 }
 
 // getBlockTransaction 获取主币的交易信息
@@ -388,7 +404,6 @@ func (w *Worker) SendContractTrans(privateKeyStr string, tx *ethTypes.DynamicFee
 	if err != nil {
 		return "", "", 0, err
 	}
-
 	publicKey := privateKey.Public()
 	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
 	if !ok {
@@ -453,7 +468,7 @@ func (w *Worker) SendContractTrans(privateKeyStr string, tx *ethTypes.DynamicFee
 		GasFeeCap: tx.GasFeeCap,
 		GasTipCap: tx.GasTipCap,
 	}
-	w.pending.Store(ts.Hash, ts)
+	w.pending.Store(signTx.Hash().Hex(), ts)
 	return fromAddress.Hex(), signTx.Hash().Hex(), tx.Nonce, nil
 }
 
@@ -542,6 +557,7 @@ func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
 		}
 	}
 
+	log.Info().Msgf("tx: %+v", txData)
 	//ethTypes.DynamicFeeTx{}
 
 	tx := ethTypes.NewTx(txData)
@@ -559,8 +575,10 @@ func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
 
 	err = w.http.SendTransaction(context.Background(), signTx)
 	if err != nil {
+		log.Error().Msgf("send transaction error %s", err.Error())
 		return "", "", 0, err
 	}
+	// TODO 处理交易失败的情况
 
 	//w.Pending[signTx.Hash().Hex()] = struct{}{}
 

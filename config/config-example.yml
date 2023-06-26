@@ -1,8 +1,8 @@
 app:
-  port: 10002
+  port: 10001
 server:
 #  应该统一的提供 rpc 地址，而不是依靠这个配置表，实际这个配置表不应该这样写 默认提供主网的 rpc 地址，用户可以自己添加网络
-  rpc: https://polygon-mumbai-bor.publicnode.com
+  rpc: https://rpc.ankr.com/polygon_mumbai
 
 engines:
   # 以太坊主币
@@ -10,6 +10,8 @@ engines:
     rpc: https://polygon-mumbai-bor.publicnode.com
   - network: Goerli
     rpc: https://ethereum-goerli.publicnode.com
+  - network : Core
+    rpc: https://rpc.test.btcs.network
 
 #  # 以太坊erc20代币
 #  - coin_name: TEST

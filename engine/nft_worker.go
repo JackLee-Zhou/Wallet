@@ -154,10 +154,6 @@ func send721Transaction(contractAddress string, privateKeyStr string, data []byt
 	//	Data: data,
 	//	// (gasFeeCap+GasTipCap)*Gas = Transaction Fee
 	//}
-	//tips := txData.GasFeeCap.Add(txData.GasFeeCap, txData.GasTipCap)
-	//log.Info().Msgf("tips is %s ", tips.String())
-	//log.Info().Msgf("gasFee is %s ", tips.Mul(tips, big.NewInt(int64(txData.Gas))).String())
-	//log.Info().Msgf("txData is %+v ", txData)
 	tx := ethTypes.NewTx(txData)
 
 	chainID, err := NFT.http.NetworkID(context.Background())

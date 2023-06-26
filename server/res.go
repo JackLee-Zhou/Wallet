@@ -48,7 +48,8 @@ type TransactionReceiptRes struct {
 
 // LinkStatus 链上状态 gas gasPrice
 type LinkStatus struct {
-	GasPrice string `json:"gasPrice"` // gasPrice
+	SuggestPrice string `json:"suggestPrice"` // gasPrice
+	BasePrice    string `json:"basePrice"`
 }
 
 type GetBalanceRes struct {

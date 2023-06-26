@@ -198,8 +198,12 @@ func timerUpDataBalance(dur time.Duration) {
 					t.Num = balance
 					newAsset = append(newAsset, t)
 				}
-				temp.Assets[temp.CurrentNetWork.NetWorkName].Coin = newAsset
-				nUsrs = append(nUsrs, temp)
+
+				if len(newAsset) > 0 {
+					temp.Assets[temp.CurrentNetWork.NetWorkName].Coin = newAsset
+					nUsrs = append(nUsrs, temp)
+				}
+
 			}
 
 			for _, v := range nUsrs {

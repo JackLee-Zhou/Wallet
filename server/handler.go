@@ -278,12 +278,14 @@ func GetLinkStatus(c *gin.Context) {
 	}
 
 	// 选择 不同的链
-	price, err := engine.EWorker.GetGasPrice()
+	suggestPrice, basePrice, err := engine.EWorker.GetGasPrice()
 	if err != nil {
 		HandleValidatorError(c, err)
 		return
 	}
-	res.GasPrice = price
+	// 返回建议费用 和 最低费用
+	res.SuggestPrice = suggestPrice
+	res.BasePrice = basePrice
 	APIResponse(c, nil, res)
 	return
 }
@@ -705,7 +707,6 @@ func CallContract(c *gin.Context) {
 		return
 	}
 	val := new(big.Int)
-	log.Info().Msgf("aR.Value is %s", aR.Value[2:])
 	val.SetString(aR.Value[2:], 16)
 	toTemp := common.HexToAddress(aR.To)
 	dec, err := hexutil.Decode(aR.Data)

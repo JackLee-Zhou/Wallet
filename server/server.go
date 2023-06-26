@@ -14,6 +14,7 @@ func Start(isSwag bool, configPath string) {
 	db.Init()
 	conf, err := config.NewConfig(configPath)
 
+	// TODO 链备份
 	CoinInit(conf.Engines[0].Rpc)
 	Init()
 	if err != nil || len(conf.Engines) == 0 {

@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus/misc"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/lmxdawn/wallet/db"
 	"github.com/lmxdawn/wallet/engine"
 	"github.com/lmxdawn/wallet/types"
@@ -20,8 +22,9 @@ type Tran struct {
 
 type ListTrans struct {
 	TransMap *sync.Map
-	From     map[string][]*types.Transaction // 从这些地址转出的交易
-	To       map[string][]*types.Transaction // 转入到这些地址的交易
+	// TODO 也要定时的落地这些数据
+	From map[string][]*types.Transaction // 从这些地址转出的交易
+	To   map[string][]*types.Transaction // 转入到这些地址的交易
 }
 
 var TransMap *ListTrans
@@ -67,13 +70,16 @@ func listenBlock(blockNum int64) error {
 		return err
 	}
 	chainID, err := ListenHttp.NetworkID(context.Background())
+	config := params.MainnetChainConfig
+	baseFee := misc.CalcBaseFee(config, block.Header())
 
 	for _, tx := range block.Transactions() {
 		// 如果接收方地址为空，则是创建合约的交易，忽略过去
+		// TODO 还是需要处理
 		if tx.To() == nil {
 			continue
 		}
-		msg, err := tx.AsMessage(ethTypes.LatestSignerForChainID(chainID), tx.GasPrice())
+		msg, err := tx.AsMessage(ethTypes.LatestSignerForChainID(chainID), baseFee)
 		if err != nil {
 			continue
 		}
@@ -99,7 +105,7 @@ func listenBlock(blockNum int64) error {
 			log.Info().Msgf("listenBlock find Trans Hash is %s from %s blockNum is %d", ts.Hash, msg.From().Hex(), blockNum)
 		} else if db.CheckWalletIsInDB(tx.To().Hex()) {
 			TransMap.TransMap.Store(ts.Hash, ts)
-			TransMap.From[msg.From().Hex()] = append(TransMap.From[msg.From().Hex()], ts)
+			TransMap.To[msg.From().Hex()] = append(TransMap.To[msg.From().Hex()], ts)
 			log.Info().Msgf("listenBlock find Trans Hash is %s to %s blockNum is %d", ts.Hash, msg.To().Hex(), blockNum)
 		}
 	}
@@ -178,7 +184,9 @@ func timeToDB() {
 			// 转入合约
 			if isToContract {
 				if !ok {
-					db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), "", ts.Data)
+					if transfer := engine.EWorker.UpPackTransfer(ts.Data); transfer != nil {
+						db.UpDateTransInfo(ts.Hash, ts.From, transfer.To, transfer.Value.String(), "", ts.Data)
+					}
 				} else if coin != nil {
 					if coin.IsNFT {
 						if transferFrom := engine.NFT.UnPackTransferFrom(ts.Data); transferFrom != nil {
@@ -200,7 +208,7 @@ func timeToDB() {
 			}
 
 			ts.Dirty = true
-			log.Info().Msgf("timeToDB write to db %+v", ts)
+			log.Info().Msgf("Success UpDateTransInfo to db %+v time is %s ", ts, time.Now().Format("2006-01-02 15:04:05"))
 			return true
 		})
 	}
