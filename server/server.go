@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lmxdawn/wallet/config"
 	"github.com/lmxdawn/wallet/db"
@@ -44,9 +45,9 @@ func Start(isSwag bool, configPath string) {
 		// 添加新币
 		auth.POST("/addNewCoin", AddNewCoin)
 		// 获取实时的 gas 费用 链上状态
-		auth.POST("/getLinkStatus", GetLinkStatus)
+		auth.POST("/estimateGas", GetLinkStatus)
 		// 获取账户的余额信息
-		auth.POST("/getBalance", GetBalance)
+
 		// 添加网络
 		auth.POST("/addNetWork", AddNetWork)
 		// 获取钱包基础信息
@@ -65,11 +66,14 @@ func Start(isSwag bool, configPath string) {
 		auth.POST("/importWallet", ImportWallet)
 		auth.POST("/cancel", Cancel)
 		auth.POST("/speedUp", SpeedUp)
+		auth.POST("/personal_sign", PersinalSign)
+		auth.POST("/signTypedData_v4", SignTypeDataV4)
 	}
 	// 登录检测
 	server.POST("/login", Login)
 	server.POST("/register", Register)
 	server.POST("/callContract", CallContract)
+	auth.POST("/getBalance", GetBalance)
 	err = server.Run(fmt.Sprintf(":%v", conf.App.Port))
 	if err != nil {
 		panic("start error")

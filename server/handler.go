@@ -3,6 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"math/big"
+	"net/http"
+	"strconv"
+
 	"github.com/btcsuite/websocket"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -12,10 +17,6 @@ import (
 	"github.com/lmxdawn/wallet/engine"
 	"github.com/lmxdawn/wallet/types"
 	"github.com/rs/zerolog/log"
-	"io"
-	"math/big"
-	"net/http"
-	"strconv"
 )
 
 var upgrader = websocket.Upgrader{
@@ -57,6 +58,14 @@ func CreateWallet(c *gin.Context) {
 		APIResponse(c, ErrAccountErr, nil)
 		return
 	}
+	// 更新 User 表
+	usr := db.NewWalletUser(wallet.Address, wallet.PrivateKey, wallet.PrivateKey)
+	err = db.UpDataUserInfo(usr)
+	if err != nil {
+		log.Info().Msgf("CreateWallet UpDataUserInfo err is %s ", err.Error())
+		APIResponse(c, err, nil)
+		return
+	}
 	ac.WalletList = append(ac.WalletList, wallet.Address)
 	_, err = db.Rdb.HDel(context.Background(), db.AccountDB, ac.Account).Result()
 	if err != nil {
@@ -70,6 +79,7 @@ func CreateWallet(c *gin.Context) {
 		APIResponse(c, err, nil)
 		return
 	}
+
 	res := CreateWalletRes{Address: wallet.Address}
 
 	APIResponse(c, nil, res)
@@ -325,22 +335,24 @@ func CheckTrans(c *gin.Context) {
 
 	if val, ok := TransMap.TransMap.Load(cT.TxHash); ok {
 		ts := val.(*types.Transaction)
+		// 以及被确认了 必然是成功或者失败
 		if ts.HasCheck {
 			if ts.Status == 1 {
 				cTR.Message = "success"
 				cTR.Status = 1
-			} else {
+			}
+			if ts.Status == 0 {
 				cTR.Message = "fail"
-				cTR.Status = 2
+				cTR.Status = 0
 			}
 			APIResponse(c, nil, cTR)
 			return
+		} else {
+			cTR.Message = "pending"
+			cTR.Status = 2
+			APIResponse(c, nil, cTR)
+			return
 		}
-	} else {
-		cTR.Message = "pending"
-		cTR.Status = 0
-		APIResponse(c, nil, cTR)
-		return
 	}
 
 	// 处理 NFT 和本地未存储上的交易结果 直接去链上查
@@ -367,7 +379,7 @@ func CheckTrans(c *gin.Context) {
 	log.Info().Msgf("Status is %+v ", lR)
 	if lR.Status == "1" {
 		cTR.Message = "success"
-		cTR.Status = 2
+		cTR.Status = 1
 		APIResponse(c, nil, cTR)
 		return
 	} else {
@@ -689,6 +701,53 @@ func Cancel(c *gin.Context) {
 	res.Nonce = u
 	APIResponse(c, nil, res)
 
+}
+
+func PersinalSign(c *gin.Context) {
+	var ps types.PersinalSignature
+	var res SendTransactionRes
+	if err := c.ShouldBindJSON(&ps); err != nil {
+		log.Error().Msgf("PersinalSign err is %s ", err.Error())
+		APIResponse(c, err, nil)
+		return
+	}
+	usr := db.GetAccountInfo(ps.From)
+	if usr == nil {
+		log.Info().Msgf("PersinalSign get User is nil,address is %s ", ps.From)
+		APIResponse(c, ErrWalletNotInDB, nil)
+		return
+	}
+	from, sign, err := engine.EWorker.PersinalSign()
+	if err != nil {
+		log.Info().Msgf("PersinalSign Sign error is %s", err.Error())
+		APIResponse(c, err, nil)
+		return
+	}
+	res.FromHex = from
+	res.SignHax = sign
+	APIResponse(c, nil, res)
+}
+
+func SignTypeDataV4(c *gin.Context) {
+	var sr SignTypeDataV4Req
+	var res SendTransactionRes
+	if err := c.ShouldBindJSON(&sr); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	log.Info().Msgf("SignTypeDataV4 is %+v ", sr)
+
+	log.Info().Msgf("SignTypeDataV4 offer is %s ", sr.Message["offerer"].(string))
+	usr := db.GetUserFromDB(sr.Message["offerer"].(string))
+	from, s, err := engine.EWorker.SignDataV4(sr.TypedData, usr.PrivateKey)
+	if err != nil {
+		log.Info().Msgf("SignTypeDataV4 err is %s ", err.Error())
+		APIResponse(c, err, nil)
+		return
+	}
+	res.FromHex = from
+	res.SignHax = s
+	APIResponse(c, nil, res)
 }
 
 // CallContract 直接调用ABI

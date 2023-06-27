@@ -1,5 +1,9 @@
 package server
 
+import (
+	"github.com/lmxdawn/wallet/types"
+)
+
 type CreateWalletReq struct {
 	Protocol string `json:"protocol"`                    // 协议
 	CoinName string `json:"coinName" binding:"required"` // 币种名称
@@ -33,9 +37,9 @@ type TransactionReceiptReq struct {
 }
 
 type GetLinkStatusReq struct {
-	Protocol string `json:"protocol" ` // 指定要获取的链名称
-	LinkName string `json:"linkName"`  // 链接
-	ChainID  uint32 `json:"chainID"`   // 链ID
+	// Protocol string `json:"protocol" ` // 指定要获取的链名称
+	LinkName string `json:"linkName"` // 链接
+	ChainID  uint32 `json:"chainID"`  // 链ID
 }
 
 // AddNewCoinReq 增加新的币种
@@ -48,7 +52,7 @@ type AddNewCoinReq struct {
 
 // GetBalanceReq 获取账户余额信息
 type GetBalanceReq struct {
-	Protocol    string `json:"protocol" `                      // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
+	// Protocol    string `json:"protocol" `                      // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
 	UserAddress string `json:"userAddress" binding:"required"` // 用户的钱包地址
 	CoinName    string `json:"coinName" `                      // 币种名称
 	//ChainID     uint32 `json:"chainID"`                        // 链ID
@@ -128,19 +132,24 @@ type SpeedUpReq struct {
 }
 
 type CallContractReq struct {
-	From                 string `json:"from" binding:"required"` // 钱包地址
-	To                   string `json:"to" binding:"required"`   // 合约地址
-	Data                 string `json:"data" `                   // 数据
-	Value                string `json:"value"`                   // 金额
-	Gas                  uint64 `json:"gas" `                    // gas
-	GasPrice             string `json:"gasPrice" `               // gasPrice
-	MaxFeePerGas         string `json:"maxFeePerGas" `           // maxFeePerGas
-	MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas" `   // maxProfitGas
+	From  string `json:"from" binding:"required"` // 钱包地址
+	To    string `json:"to" binding:"required"`   // 合约地址
+	Data  string `json:"data" `                   // 数据
+	Value string `json:"value"`                   // 金额
+	//Gas                  string `json:"gasLimit" `               // gas
+	//GasPrice             string `json:"gasPrice" `               // gasPrice
+	//MaxFeePerGas         string `json:"maxFeePerGas" `           // maxFeePerGas
+	//MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas" `   // maxProfitGas
 }
 
 type CancelReq struct {
 	Address string `json:"address" binding:"required"` // 钱包地址
 	TxHash  string `json:"txHash" binding:"required"`  // 交易哈希
+}
+
+type SignTypeDataV4Req struct {
+	//From string `json:"from" binding:"required"` // 钱包地址
+	types.TypedData
 }
 
 // AddNFTReq 向钱中加入 NFT

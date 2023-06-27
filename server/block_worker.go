@@ -104,6 +104,7 @@ func listenBlock(blockNum int64) error {
 			TransMap.From[msg.From().Hex()] = append(TransMap.From[msg.From().Hex()], ts)
 			log.Info().Msgf("listenBlock find Trans Hash is %s from %s blockNum is %d", ts.Hash, msg.From().Hex(), blockNum)
 		} else if db.CheckWalletIsInDB(tx.To().Hex()) {
+			// TODO 可能需要解析出真正的 to 地址
 			TransMap.TransMap.Store(ts.Hash, ts)
 			TransMap.To[msg.From().Hex()] = append(TransMap.To[msg.From().Hex()], ts)
 			log.Info().Msgf("listenBlock find Trans Hash is %s to %s blockNum is %d", ts.Hash, msg.To().Hex(), blockNum)
@@ -175,9 +176,9 @@ func timeToDB() {
 			// 从合约转入
 			if isFromContract {
 				if !ok {
-					db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), "", ts.Data)
+					db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), "", int32(ts.Status), ts.Data)
 				} else if coin != nil {
-					db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), coin.ContractAddress, ts.Data)
+					db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), coin.ContractAddress, int32(ts.Status), ts.Data)
 				}
 			}
 
@@ -185,23 +186,23 @@ func timeToDB() {
 			if isToContract {
 				if !ok {
 					if transfer := engine.EWorker.UpPackTransfer(ts.Data); transfer != nil {
-						db.UpDateTransInfo(ts.Hash, ts.From, transfer.To, transfer.Value.String(), "", ts.Data)
+						db.UpDateTransInfo(ts.Hash, ts.From, transfer.To, transfer.Value.String(), "", int32(ts.Status), ts.Data)
 					}
 				} else if coin != nil {
 					if coin.IsNFT {
 						if transferFrom := engine.NFT.UnPackTransferFrom(ts.Data); transferFrom != nil {
-							db.UpDateTransInfo(ts.Hash, ts.From, transferFrom.To, ts.Value.String(), coin.ContractAddress, ts.Data)
+							db.UpDateTransInfo(ts.Hash, ts.From, transferFrom.To, ts.Value.String(), coin.ContractAddress, int32(ts.Status), ts.Data)
 						} else {
 							// 解析失败 使用传入的 目的地址兜底
-							db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), coin.ContractAddress, ts.Data)
+							db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), coin.ContractAddress, int32(ts.Status), ts.Data)
 						}
 					} else {
 						// To 会是合约地址 TODO 解析出真正的接受用户地址地址
 						if transfer := engine.EWorker.UpPackTransfer(ts.Data); transfer != nil {
-							db.UpDateTransInfo(ts.Hash, ts.From, transfer.To, transfer.Value.String(), coin.ContractAddress, ts.Data)
+							db.UpDateTransInfo(ts.Hash, ts.From, transfer.To, transfer.Value.String(), coin.ContractAddress, int32(ts.Status), ts.Data)
 						} else {
 							// 解析失败 使用传入的 目的地址兜底
-							db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), coin.ContractAddress, ts.Data)
+							db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), coin.ContractAddress, int32(ts.Status), ts.Data)
 						}
 					}
 				}

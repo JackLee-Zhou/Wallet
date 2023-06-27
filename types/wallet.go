@@ -35,7 +35,13 @@ type Transaction struct {
 	GasTipCap   *big.Int // gasTipCap
 	Value       *big.Int // 交易数量
 	Data        []byte   // 交易数据
-	Status      uint     // 状态（0：未完成，1：已完成）
-	HasCheck    bool     // 是否已经检查过`
+	Status      uint     // 状态（0：失败，1：成功）
+	HasCheck    bool     // 是否已经检查过 为 false 的话表示处于 pending 状态
 	Dirty       bool     // 是否已经写入数据库 false 未写入  true 已写入
+}
+
+// PersinalSignature
+type PersinalSignature struct {
+	From    string `json:"from" binding:"required"`
+	Message string `json:"message" binding:"required"` // 消息内容
 }

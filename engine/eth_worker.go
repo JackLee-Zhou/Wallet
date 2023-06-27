@@ -4,6 +4,10 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
+	"math/big"
+	"strings"
+	"sync"
+
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -13,11 +17,9 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/lmxdawn/wallet/db"
 	"github.com/lmxdawn/wallet/types"
 	"github.com/rs/zerolog/log"
-	"math/big"
-	"strings"
-	"sync"
 )
 
 type MulSignCounter struct {
@@ -429,14 +431,29 @@ func (w *Worker) SendContractTrans(privateKeyStr string, tx *ethTypes.DynamicFee
 	if err != nil {
 		return "", "", 0, err
 	}
+
+	number, err := NFT.http.BlockNumber(context.Background())
+	if err != nil {
+		return "", "", 0, err
+	}
+
 	w.nonceLock.Lock()
 	defer w.nonceLock.Unlock()
 	tx.Nonce, err = w.http.PendingNonceAt(context.Background(), fromAddress)
 	if err != nil {
 		return "", "", 0, err
 	}
+
+	block, err := NFT.http.BlockByNumber(context.Background(), big.NewInt(int64(number)))
+	if err != nil {
+		log.Info().Msgf("BlockByNumber err is %s ", err.Error())
+		return "", "", 0, err
+	}
+	config := params.MainnetChainConfig
+	baseFee := misc.CalcBaseFee(config, block.Header())
+
 	tx.GasTipCap = gasTip
-	tx.GasFeeCap = gasPrice
+	tx.GasFeeCap = gasPrice.Add(gasPrice, baseFee)
 	tx.Gas = gasLimit * 2
 	txData := ethTypes.NewTx(tx)
 	log.Info().Msgf("tx: %+v", tx)
@@ -469,7 +486,7 @@ func (w *Worker) SendContractTrans(privateKeyStr string, tx *ethTypes.DynamicFee
 		GasTipCap: tx.GasTipCap,
 	}
 	w.pending.Store(signTx.Hash().Hex(), ts)
-	return fromAddress.Hex(), signTx.Hash().Hex(), tx.Nonce, nil
+	return fromAddress.Hex(), signTx.Hash().Hex(), tx.Nonce, err
 }
 
 func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
@@ -508,7 +525,7 @@ func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
 		toAddressTmp := common.HexToAddress(pend.To)
 		toAddressHex = &toAddressTmp
 		//txData.Data = pend.Data
-		txData.Gas = uint64(28000)
+		txData.Gas = pend.Gas
 		txData.GasFeeCap = gasPrice.Mul(gasPrice, big.NewInt(2))
 		txData.GasTipCap = gasTip.Mul(gasTip, big.NewInt(2))
 		txData.To = toAddressHex
@@ -527,15 +544,26 @@ func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
 		}
 
 		//gasLimit = uint64(21000) // 在非合约中的转账 21000 是够的 但是在合约中 这个限制太小
-		gasLimit = uint64(28000) //
+		//gasLimit = uint64(28000) //
 
 		if contractAddress != "" {
 			toAddressTmp := common.HexToAddress(contractAddress)
 			toAddressHex = &toAddressTmp
+			gasLimit, err = w.http.EstimateGas(context.Background(), ethereum.CallMsg{
+				To:   toAddressHex,
+				Data: data,
+			})
+			gasLimit *= 2
 		} else {
+
 			toAddressTmp := common.HexToAddress(toAddress)
 			toAddressHex = &toAddressTmp
+			// 标准转账 21000
+			gasLimit = uint64(21000)
 		}
+
+		// 预估 gasLimit
+
 		// 20 币和 NFT 交易都可以通过这里 做处理 防止 value 传值错误
 		//if contractAddress != "" {
 		//	value = big.NewInt(0)
@@ -588,7 +616,7 @@ func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
 		From: fromAddress.String(),
 		To:   txData.To.String(),
 		//Value:  trueValue,
-		Status:    uint(0),
+		Status:    uint(2),
 		Data:      data,
 		Nonce:     nonce,
 		Gas:       txData.Gas,
@@ -602,6 +630,9 @@ func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
 	//	//Value:  trueValue,
 	//	Status: uint(0),
 	//})
+
+	// TODO 应该交给批处理
+	db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), "", int32(ts.Status), ts.Data)
 	w.pending.Store(signTx.Hash().Hex(), ts)
 
 	return fromAddress.Hex(), signTx.Hash().Hex(), nonce, nil
@@ -705,4 +736,33 @@ func (w *Worker) MulSignMode(to, coinName, num, timeStamp string) (int32, string
 	defer signCounter.Lock.Unlock()
 
 	return 0, ""
+}
+
+func (w *Worker) PersinalSign() (string, string, error) {
+
+	return "", "", nil
+}
+
+func (w *Worker) SignDataV4(data types.TypedData, privateStr string) (string, string, error) {
+
+	// var tData types.TypedData
+	privateKey, err := crypto.HexToECDSA(privateStr)
+	if err != nil {
+		log.Error().Msgf("HexToECDSA error %s", err.Error())
+		return "", "", err
+	}
+	from := crypto.PubkeyToAddress(privateKey.PublicKey)
+	typedDataHash, _, err := types.TypedDataAndHash(data)
+	if err != nil {
+		log.Info().Msgf("TypedDataAndHash error %s ", err.Error())
+	}
+	signature, err := crypto.Sign(typedDataHash, privateKey)
+	if err != nil {
+		log.Info().Msgf("Sign error %s", err.Error())
+		return "", "", err
+	}
+	// buf.WriteByte(1) // recovery ID
+	sigData := hexutil.Encode(signature)
+	log.Info().Msgf("SignDataV4 Res %s ", sigData)
+	return from.Hex(), sigData, nil
 }

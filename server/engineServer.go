@@ -43,10 +43,6 @@ func CoinInit(url string) {
 			log.Fatal().Msgf("init AddCoin err")
 		}
 	}
-	//for _, v := range CoinList.List {
-	//	temp := v
-	//	takeCoinListen(temp)
-	//}
 
 	iListenHttp, err := ethclient.Dial(url)
 	if err != nil {
@@ -54,8 +50,8 @@ func CoinInit(url string) {
 		return
 	}
 	ListenHttp = iListenHttp
-	timerUpDataBalance(30 * time.Second)
-	timerUpDataNFTOwner(60 * time.Second)
+	timerUpDataBalance(120 * time.Second)
+	timerUpDataNFTOwner(120 * time.Second)
 	log.Info().Msgf("engineServer init success ")
 }
 
@@ -136,6 +132,7 @@ func timerUpDataNFTOwner(dur time.Duration) {
 					}
 
 				}
+				// 变更后的原始所有者
 				if isChange {
 					nUsrs = append(nUsrs, temp)
 				}
@@ -154,7 +151,7 @@ func timerUpDataNFTOwner(dur time.Duration) {
 				})
 				nUsrs = append(nUsrs, usr)
 			}
-			// 跟新变更的用户
+			// 统一更新所有变更的用户
 			for _, v := range nUsrs {
 				err := db.UpDataUserInfo(v)
 				if err != nil {
