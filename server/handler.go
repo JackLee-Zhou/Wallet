@@ -278,26 +278,28 @@ func Transaction(c *gin.Context) {
 	return
 }
 
-// GetLinkStatus 获取实时的链上状态
-func GetLinkStatus(c *gin.Context) {
-	var res LinkStatus
-	var linkStatus GetLinkStatusReq
-	if err := c.BindJSON(&linkStatus); err != nil {
+// EstimateGas 预估 Gas
+func EstimateGas(c *gin.Context) {
+	var cr CallContractReq
+	if err := c.ShouldBindJSON(&cr); err != nil {
 		HandleValidatorError(c, err)
 		return
 	}
-
-	// 选择 不同的链
-	suggestPrice, basePrice, err := engine.EWorker.GetGasPrice()
+	val := new(big.Int)
+	val.SetString(cr.Value, 16)
+	data, err := hexutil.Decode(cr.Data)
 	if err != nil {
-		HandleValidatorError(c, err)
+		log.Error().Msgf("hexutil.Decode err: %s", err.Error())
+		APIResponse(c, err, nil)
 		return
 	}
-	// 返回建议费用 和 最低费用
-	res.SuggestPrice = suggestPrice
-	res.BasePrice = basePrice
-	APIResponse(c, nil, res)
-	return
+	gaslimit, err := engine.EWorker.EstimateGas(cr.From, cr.To, data, val)
+	if err != nil {
+		log.Error().Msgf("EstimateGas err: %s", err.Error())
+		APIResponse(c, err, nil)
+		return
+	}
+	APIResponse(c, nil, gaslimit*2)
 }
 
 // GetBalance 获取账户的余额信息
@@ -711,20 +713,28 @@ func PersinalSign(c *gin.Context) {
 		APIResponse(c, err, nil)
 		return
 	}
-	usr := db.GetAccountInfo(ps.From)
+	usr := db.GetUserFromDB(ps.From)
 	if usr == nil {
 		log.Info().Msgf("PersinalSign get User is nil,address is %s ", ps.From)
 		APIResponse(c, ErrWalletNotInDB, nil)
 		return
 	}
-	from, sign, err := engine.EWorker.PersinalSign()
+	// 传过来的数据是什么格式
+	data, err := hexutil.Decode(ps.Message)
+	if err != nil {
+		log.Info().Msgf("PersinalSign Decode err is %s ", err.Error())
+		APIResponse(c, err, nil)
+		return
+	}
+	sign, err := engine.EWorker.PersinalSign(data, usr.PrivateKey)
 	if err != nil {
 		log.Info().Msgf("PersinalSign Sign error is %s", err.Error())
 		APIResponse(c, err, nil)
 		return
 	}
-	res.FromHex = from
-	res.SignHax = sign
+
+	res.FromHex = ps.From
+	res.SignHax = hexutil.Encode(sign)
 	APIResponse(c, nil, res)
 }
 
@@ -770,6 +780,7 @@ func CallContract(c *gin.Context) {
 	toTemp := common.HexToAddress(aR.To)
 	dec, err := hexutil.Decode(aR.Data)
 	if err != nil {
+		log.Error().Msgf("CallContract Decode err is %s ", err.Error())
 		APIResponse(c, err, nil)
 		return
 	}
@@ -780,6 +791,7 @@ func CallContract(c *gin.Context) {
 	}
 	contractTrans, s, u, err := engine.EWorker.SendContractTrans(ac.PrivateKey, tx)
 	if err != nil {
+		log.Error().Msgf("CallContract SendContractTrans err is %s ", err.Error())
 		APIResponse(c, err, nil)
 		return
 	}
@@ -798,4 +810,69 @@ func AddLink(c *gin.Context) {
 // ChangeLink 修改链
 func ChangeLink(c *gin.Context) {
 
+}
+
+func GetBlockNumber(c *gin.Context) {
+	number, err := engine.EWorker.GetBlockNumber()
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+	APIResponse(c, nil, number)
+}
+
+func GetTransactionByHash(c *gin.Context) {
+	var tR GetTransactionByHashReq
+	if err := c.ShouldBindJSON(&tR); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+
+	trans, err := engine.EWorker.GetTransactionByHash(tR.Tx)
+	if err != nil {
+		APIResponse(c, err, nil)
+		return
+	}
+	APIResponse(c, nil, trans)
+}
+
+func GetGasPrice(c *gin.Context) {
+	var res LinkStatus
+	// var linkStatus GetLinkStatusReq
+	// if err := c.BindJSON(&linkStatus); err != nil {
+	// 	HandleValidatorError(c, err)
+	// 	return
+	// }
+
+	// 选择 不同的链
+	suggestPrice, basePrice, err := engine.EWorker.GetGasPrice()
+	if err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	// 返回建议费用 和 最低费用
+	res.SuggestPrice = suggestPrice
+	res.BasePrice = basePrice
+	APIResponse(c, nil, res)
+
+}
+
+// ETHCall  Call 合约
+func ETHCall(c *gin.Context) {
+	var cR CallContractReq
+	if err := c.ShouldBindJSON(&cR); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	data, err := hexutil.Decode(cR.Data)
+	if err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	res, err := engine.EWorker.ETHCall(cR.From, cR.To, data)
+	if err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	APIResponse(c, nil, hexutil.Encode(res))
 }

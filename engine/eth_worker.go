@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
+	"fmt"
 	"math/big"
+
+	// "net/rpc"
 	"strings"
 	"sync"
 
@@ -17,6 +20,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
+
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/lmxdawn/wallet/db"
 	"github.com/lmxdawn/wallet/types"
 	"github.com/rs/zerolog/log"
@@ -27,12 +32,21 @@ type MulSignCounter struct {
 	Lock    sync.Locker
 }
 
+type rpcTransaction struct {
+	Tx *ethTypes.Transaction `json:"tx"`
+	// IsPending   bool                  `json:"isPending"`
+	BlockNumber string         `json:"blockNumber"`
+	BlockHash   common.Hash    `json:"blockHash"`
+	From        common.Address `json:"from"`
+}
+
 var signCounter *MulSignCounter
 
 type Worker struct {
 	confirms uint64 // 需要的确认数
 	// 使用 rpc.client 的话就要自己拼接参数 用 ethclient.Client 的话就不用 他包装了一层
 	http                   *ethclient.Client
+	wClient                *rpc.Client
 	tokenTransferEventHash common.Hash
 	tokenAbi               abi.ABI // 合约的abi
 	// pendingList 未完成的交易列表
@@ -86,6 +100,10 @@ func (w *Worker) RemovePendingByHex(txHex string) {
 }
 
 func NewWorker(confirms uint64, url string) error {
+	// rpcClient, err := rpc.Dial(url)
+	// if err != nil {
+	// 	return err
+	// }
 	http, err := ethclient.Dial(url)
 	if err != nil {
 		return err
@@ -102,6 +120,7 @@ func NewWorker(confirms uint64, url string) error {
 	if err != nil {
 		return err
 	}
+
 	EWorker = &Worker{
 		confirms:               confirms,
 		http:                   http,
@@ -110,6 +129,7 @@ func NewWorker(confirms uint64, url string) error {
 		pending:                &sync.Map{},
 		//TransHistory:           make(map[string][]*types.Transaction),
 	}
+	// EWorker.wClient = rpc.NewServer()
 	return nil
 }
 func (w *Worker) GetNowBlockNum() (uint64, error) {
@@ -432,7 +452,7 @@ func (w *Worker) SendContractTrans(privateKeyStr string, tx *ethTypes.DynamicFee
 		return "", "", 0, err
 	}
 
-	number, err := NFT.http.BlockNumber(context.Background())
+	number, err := w.http.BlockNumber(context.Background())
 	if err != nil {
 		return "", "", 0, err
 	}
@@ -444,7 +464,7 @@ func (w *Worker) SendContractTrans(privateKeyStr string, tx *ethTypes.DynamicFee
 		return "", "", 0, err
 	}
 
-	block, err := NFT.http.BlockByNumber(context.Background(), big.NewInt(int64(number)))
+	block, err := w.http.BlockByNumber(context.Background(), big.NewInt(int64(number)))
 	if err != nil {
 		log.Info().Msgf("BlockByNumber err is %s ", err.Error())
 		return "", "", 0, err
@@ -456,7 +476,7 @@ func (w *Worker) SendContractTrans(privateKeyStr string, tx *ethTypes.DynamicFee
 	tx.GasFeeCap = gasPrice.Add(gasPrice, baseFee)
 	tx.Gas = gasLimit * 2
 	txData := ethTypes.NewTx(tx)
-	log.Info().Msgf("tx: %+v", tx)
+	// log.Info().Msgf("tx: %+v", tx)
 	chainID, err := w.http.NetworkID(context.Background())
 	if err != nil {
 		return "", "", 0, err
@@ -464,7 +484,9 @@ func (w *Worker) SendContractTrans(privateKeyStr string, tx *ethTypes.DynamicFee
 
 	// 签名
 	signTx, err := ethTypes.SignTx(txData, ethTypes.LatestSignerForChainID(chainID), privateKey)
+	// log.Info().Msgf("signTx: %+v", signTx)
 	if err != nil {
+		log.Error().Msgf("SignTx error: %s", err.Error())
 		return "", "", 0, err
 	}
 
@@ -486,8 +508,11 @@ func (w *Worker) SendContractTrans(privateKeyStr string, tx *ethTypes.DynamicFee
 		GasTipCap: tx.GasTipCap,
 	}
 	w.pending.Store(signTx.Hash().Hex(), ts)
+	db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), "", int32(ts.Status), ts.Data)
 	return fromAddress.Hex(), signTx.Hash().Hex(), tx.Nonce, err
 }
+
+// TODO 将所有交易都统一
 
 func (w *Worker) sendTransaction(contractAddress string, privateKeyStr string,
 	toAddress string, value *big.Int, value20 *big.Int, nonce uint64, data []byte, trans ...*types.Transaction) (string, string, uint64, error) {
@@ -738,9 +763,25 @@ func (w *Worker) MulSignMode(to, coinName, num, timeStamp string) (int32, string
 	return 0, ""
 }
 
-func (w *Worker) PersinalSign() (string, string, error) {
+func (w *Worker) PersinalSign(message []byte, privateStr string) ([]byte, error) {
 
-	return "", "", nil
+	privateKey, err := crypto.HexToECDSA(privateStr)
+	if err != nil {
+		log.Error().Msgf("HexToECDSA error %s", err.Error())
+		return nil, err
+	}
+	// 是否要预 Hash
+	data := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(message), message)
+
+	msg := crypto.Keccak256Hash([]byte(data))
+	signer, err := crypto.Sign(msg.Bytes(), privateKey)
+
+	if err != nil {
+		log.Error().Msgf("PersinalSign error %s", err.Error())
+		return nil, err
+	}
+	signer[64] += 27
+	return signer, nil
 }
 
 func (w *Worker) SignDataV4(data types.TypedData, privateStr string) (string, string, error) {
@@ -761,8 +802,88 @@ func (w *Worker) SignDataV4(data types.TypedData, privateStr string) (string, st
 		log.Info().Msgf("Sign error %s", err.Error())
 		return "", "", err
 	}
-	// buf.WriteByte(1) // recovery ID
+
 	sigData := hexutil.Encode(signature)
 	log.Info().Msgf("SignDataV4 Res %s ", sigData)
 	return from.Hex(), sigData, nil
+}
+
+func (w *Worker) GetTransactionByHash(hash string) (*rpcTransaction, error) {
+	// w.http.
+	jsonData := &rpcTransaction{}
+	// err := w.wClient.CallContext(context.Background(), jsonData, "eth_getTransactionByHash", common.HexToHash(hash))
+	// if err != nil {
+	// 	log.Error().Msgf("GetTransactionByHash error %s", err.Error())
+	// 	return nil, err
+	// }
+
+	trans, isPending, err := w.http.TransactionByHash(context.Background(), common.HexToHash(hash))
+	if err != nil {
+		log.Error().Msgf("TransactionByHash error %s hash is %s ", err.Error(), hash)
+		return nil, err
+	}
+	if isPending {
+		log.Info().Msgf("TransactionByHash %s is pending", hash)
+	}
+	receipt, err := w.http.TransactionReceipt(context.Background(), common.HexToHash(hash))
+	if err != nil {
+		log.Error().Msgf("TransactionReceipt error %s", err.Error())
+		// return nil, err
+	} else {
+		from, err := w.http.TransactionSender(context.Background(), trans, receipt.BlockHash, receipt.TransactionIndex)
+		if err != nil {
+			log.Error().Msgf("TransactionSender error %s", err.Error())
+		} else {
+			jsonData.From = from
+		}
+		// 查询 blockNumber
+		jsonData.BlockNumber = receipt.BlockNumber.String()
+		// BlockHash
+		jsonData.BlockHash = receipt.BlockHash
+
+	}
+	jsonData.Tx = trans
+	log.Info().Msgf("GetTransactionByHash Res %v ", jsonData)
+	return jsonData, nil
+}
+
+// GetBlockNumber 返回最新的 block number
+func (w *Worker) GetBlockNumber() (uint64, error) {
+	return w.http.BlockNumber(context.Background())
+}
+
+func (w *Worker) EstimateGas(from, to string, data []byte, value *big.Int) (uint64, error) {
+	fromHex := common.HexToAddress(from)
+	toHex := common.HexToAddress(to)
+	return w.http.EstimateGas(context.Background(), ethereum.CallMsg{
+		From:  fromHex,
+		To:    &toHex,
+		Data:  data,
+		Value: value,
+	})
+}
+
+func (w *Worker) ETHCall(from, to string, data []byte) ([]byte, error) {
+	fromHex := common.HexToAddress(from)
+	toHex := common.HexToAddress(to)
+	number, err := w.http.BlockNumber(context.Background())
+	if err != nil {
+		log.Error().Msgf("BlockNumber error %s", err.Error())
+		return nil, err
+	}
+	//  最新的区块
+	res, err := w.http.CallContract(context.Background(), ethereum.CallMsg{
+		From: fromHex,
+		To:   &toHex,
+		Data: data,
+	}, big.NewInt(int64(number)))
+	if err != nil {
+		log.Error().Msgf("CallContract error %s", err.Error())
+		return nil, err
+	}
+	return res, nil
+}
+
+func (w *Worker) CallContext() {
+
 }

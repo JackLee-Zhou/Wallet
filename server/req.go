@@ -132,14 +132,14 @@ type SpeedUpReq struct {
 }
 
 type CallContractReq struct {
-	From  string `json:"from" binding:"required"` // 钱包地址
-	To    string `json:"to" binding:"required"`   // 合约地址
-	Data  string `json:"data" `                   // 数据
-	Value string `json:"value"`                   // 金额
-	//Gas                  string `json:"gasLimit" `               // gas
-	//GasPrice             string `json:"gasPrice" `               // gasPrice
-	//MaxFeePerGas         string `json:"maxFeePerGas" `           // maxFeePerGas
-	//MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas" `   // maxProfitGas
+	From                 string `json:"from" binding:"required"` // 钱包地址
+	To                   string `json:"to" binding:"required"`   // 合约地址
+	Data                 string `json:"data" `                   // 数据
+	Value                string `json:"value"`                   // 金额
+	Gas                  string `json:"gasLimit" `               // gas
+	GasPrice             string `json:"gasPrice" `               // gasPrice
+	MaxFeePerGas         string `json:"maxFeePerGas" `           // maxFeePerGas
+	MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas" `   // maxProfitGas
 }
 
 type CancelReq struct {
@@ -157,4 +157,11 @@ type AddNFTReq struct {
 	UserAddress     string `json:"userAddress" binding:"required"` // 用户的钱包地址
 	ContractAddress string `json:"contractAddress" binding:"required"`
 	TokenID         string `json:"tokenID" binding:"required"`
+}
+
+type GetTransactionByHashReq struct {
+	Tx string `json:"tx" binding:"required"`
+}
+
+type EstimateGasReq struct {
 }

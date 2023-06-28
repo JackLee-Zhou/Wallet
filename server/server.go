@@ -45,7 +45,7 @@ func Start(isSwag bool, configPath string) {
 		// 添加新币
 		auth.POST("/addNewCoin", AddNewCoin)
 		// 获取实时的 gas 费用 链上状态
-		auth.POST("/estimateGas", GetLinkStatus)
+
 		// 获取账户的余额信息
 
 		// 添加网络
@@ -73,12 +73,19 @@ func Start(isSwag bool, configPath string) {
 	server.POST("/login", Login)
 	server.POST("/register", Register)
 	server.POST("/callContract", CallContract)
-	auth.POST("/getBalance", GetBalance)
+	server.POST("/getBalance", GetBalance)
+	server.POST("/eth_call", ETHCall)
+
+	server.POST("/eth_blocknumber", GetBlockNumber)
+	server.POST("/eth_getTransactionByHash", GetTransactionByHash)
+	server.POST("/eth_estimateGas", EstimateGas)
+	server.POST("/eth_gasPrice", GetGasPrice)
+
 	err = server.Run(fmt.Sprintf(":%v", conf.App.Port))
 	if err != nil {
 		panic("start error")
 	}
 
-	log.Info().Msgf("start success at %s ", conf.App.Port)
+	log.Info().Msgf("start success at %d ", conf.App.Port)
 
 }

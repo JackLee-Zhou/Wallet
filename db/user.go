@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/rs/zerolog/log"
 	"math/big"
 	"strconv"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 var SignTyp int32
@@ -315,6 +316,21 @@ func UpDateTransInfo(hex, from, to, value, coinName string, status int32, data [
 		UpDataUserTransInfo(to, coinName, []*Transfer{ts})
 	}
 
+}
+
+func GetTransferByHash(hash string) *Transfer {
+	res, err := Rdb.HGet(context.Background(), TransferDB, hash).Result()
+	if err != nil {
+		log.Info().Msgf("GetTransferByHash err is %s ", err.Error())
+		return nil
+	}
+	temp := &Transfer{}
+	err = json.Unmarshal([]byte(res), temp)
+	if err != nil {
+		log.Info().Msgf("GetTransferByHash Unmarshal err is %s ", err.Error())
+		return nil
+	}
+	return temp
 }
 
 // GetTransferFromDB 获取以 from 为目标地址的交易信息
