@@ -67,7 +67,7 @@ type GetWalletActivity struct {
 
 // SendTransaction 发起一笔交易
 type SendTransaction struct {
-	Protocol string `json:"protocol"`                // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
+	//Protocol string `json:"protocol"`                // 指定要获取的链名称 应该用这个给 要知道现在这个用户要查哪条链上的数据
 	From     string `json:"from" binding:"required"` // 用户的钱包地址
 	CoinName string `json:"coinName"`                // 币种名称 为空表示原生币
 	To       string `json:"to" binding:"required"`   // 接收者
@@ -164,4 +164,8 @@ type GetTransactionByHashReq struct {
 }
 
 type EstimateGasReq struct {
+}
+type GetBlockByNumberReq struct {
+	Number string `json:"blockNumber" binding:"required"`
+	IsFull bool   `json:"flag"`
 }

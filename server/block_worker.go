@@ -23,7 +23,7 @@ type Tran struct {
 type ListTrans struct {
 	TransMap *sync.Map
 	// TODO 也要定时的落地这些数据
-	From map[string][]*types.Transaction // 从这些地址转出的交易
+	From map[string][]*types.Transaction // 从这些地址转出的交易 TODO 这里其实只用存交易的 Hash 具体数据根据 Hash 去 TransMap 中查询
 	To   map[string][]*types.Transaction // 转入到这些地址的交易
 }
 
@@ -55,6 +55,7 @@ func listenAllBlock(initNum uint64) {
 		for i := startNum; i < toBlock; i++ {
 			if err := listenBlock(int64(i)); err != nil {
 				log.Info().Msgf("listenAllBlock listenBlock err is %s ", err.Error())
+				// 长事件错误要换链
 				log.Info().Msgf("等待%d秒，当前已是最新区块", 10)
 				<-time.After(time.Duration(10) * time.Second)
 			}
@@ -106,7 +107,7 @@ func listenBlock(blockNum int64) error {
 		} else if db.CheckWalletIsInDB(tx.To().Hex()) {
 			// TODO 可能需要解析出真正的 to 地址
 			TransMap.TransMap.Store(ts.Hash, ts)
-			TransMap.To[msg.From().Hex()] = append(TransMap.To[msg.From().Hex()], ts)
+			TransMap.To[msg.To().Hex()] = append(TransMap.To[msg.To().Hex()], ts)
 			log.Info().Msgf("listenBlock find Trans Hash is %s to %s blockNum is %d", ts.Hash, msg.To().Hex(), blockNum)
 		}
 	}
@@ -208,6 +209,15 @@ func timeToDB() {
 				}
 			}
 
+			// 直接是用户之间的交易
+			if !isToContract && !isFromContract {
+				if !ok {
+					db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), "", int32(ts.Status), ts.Data)
+				} else if coin != nil {
+					db.UpDateTransInfo(ts.Hash, ts.From, ts.To, ts.Value.String(), coin.ContractAddress, int32(ts.Status), ts.Data)
+				}
+			}
+
 			ts.Dirty = true
 			log.Info().Msgf("Success UpDateTransInfo to db %+v time is %s ", ts, time.Now().Format("2006-01-02 15:04:05"))
 			return true
@@ -223,6 +233,7 @@ func Init() {
 		To:       map[string][]*types.Transaction{},
 	}
 	num, _ := ListenHttp.BlockNumber(context.Background())
+	// 从制定和块开始监听
 	go listenAllBlock(num)
 	go startGetReceipt(5)
 	go timeToDB()

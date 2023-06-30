@@ -16,11 +16,15 @@ func Start(isSwag bool, configPath string) {
 	conf, err := config.NewConfig(configPath)
 
 	// TODO 链备份
+
+	// ----------- 币种监听初始化 -------------
 	CoinInit(conf.Engines[0].Rpc)
 	Init()
 	if err != nil || len(conf.Engines) == 0 {
 		panic("Failed to load configuration")
 	}
+
+	// ----------- 链操作初始化 -------------
 	// 若要设置预设链 则
 	err = engine.NewWorker(5, conf.Engines[0].Rpc)
 	if err != nil {
@@ -66,7 +70,7 @@ func Start(isSwag bool, configPath string) {
 		auth.POST("/importWallet", ImportWallet)
 		auth.POST("/cancel", Cancel)
 		auth.POST("/speedUp", SpeedUp)
-		auth.POST("/personal_sign", PersinalSign)
+		auth.POST("/personal_sign", PersonalSign)
 		auth.POST("/signTypedData_v4", SignTypeDataV4)
 	}
 	// 登录检测
@@ -75,7 +79,7 @@ func Start(isSwag bool, configPath string) {
 	server.POST("/callContract", CallContract)
 	server.POST("/getBalance", GetBalance)
 	server.POST("/eth_call", ETHCall)
-
+	server.POST("/eth_getBlockByNumber", GetBlockByNumber)
 	server.POST("/eth_blocknumber", GetBlockNumber)
 	server.POST("/eth_getTransactionByHash", GetTransactionByHash)
 	server.POST("/eth_estimateGas", EstimateGas)
@@ -85,7 +89,7 @@ func Start(isSwag bool, configPath string) {
 	if err != nil {
 		panic("start error")
 	}
-
+	gin.SetMode(gin.ReleaseMode)
 	log.Info().Msgf("start success at %d ", conf.App.Port)
 
 }

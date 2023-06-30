@@ -8,6 +8,7 @@
 *.iws
 *.iml
 *.ipr
+.fleet
 
 ### VS Code ###
 .vscode/

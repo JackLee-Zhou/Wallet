@@ -42,6 +42,6 @@ type Transaction struct {
 
 // PersinalSignature
 type PersinalSignature struct {
-	From    string `json:"from" binding:"required"`
-	Message string `json:"message" binding:"required"` // 消息内容
+	From    string `json:"account" binding:"required"`
+	Message string `json:"hash" binding:"required"` // 消息内容
 }

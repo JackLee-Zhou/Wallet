@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -32,12 +33,16 @@ type MulSignCounter struct {
 	Lock    sync.Locker
 }
 
-type rpcTransaction struct {
+type RpcTransaction struct {
 	Tx *ethTypes.Transaction `json:"tx"`
 	// IsPending   bool                  `json:"isPending"`
-	BlockNumber string         `json:"blockNumber"`
-	BlockHash   common.Hash    `json:"blockHash"`
-	From        common.Address `json:"from"`
+	rpcExtraInfo
+}
+
+type rpcExtraInfo struct {
+	BlockNumber *string         `json:"blockNumber"`
+	BlockHash   *common.Hash    `json:"blockHash"`
+	From        *common.Address `json:"from"`
 }
 
 var signCounter *MulSignCounter
@@ -45,7 +50,8 @@ var signCounter *MulSignCounter
 type Worker struct {
 	confirms uint64 // 需要的确认数
 	// 使用 rpc.client 的话就要自己拼接参数 用 ethclient.Client 的话就不用 他包装了一层
-	http                   *ethclient.Client
+	http *ethclient.Client
+	// 可以使用原生的 Call 方法
 	wClient                *rpc.Client
 	tokenTransferEventHash common.Hash
 	tokenAbi               abi.ABI // 合约的abi
@@ -59,6 +65,13 @@ type Worker struct {
 
 // EWorker 全局的worker 考虑切链 加Map
 var EWorker *Worker
+
+func (r *RpcTransaction) UnmarshalJSON(msg []byte) error {
+	if err := json.Unmarshal(msg, &r.Tx); err != nil {
+		return err
+	}
+	return json.Unmarshal(msg, &r.rpcExtraInfo)
+}
 
 // IsContract 判断是否是合约地址
 func (w *Worker) IsContract(address string) bool {
@@ -100,11 +113,11 @@ func (w *Worker) RemovePendingByHex(txHex string) {
 }
 
 func NewWorker(confirms uint64, url string) error {
-	// rpcClient, err := rpc.Dial(url)
-	// if err != nil {
-	// 	return err
-	// }
-	http, err := ethclient.Dial(url)
+	rpcClient, err := rpc.Dial(url)
+	if err != nil {
+		return err
+	}
+	http := ethclient.NewClient(rpcClient)
 	if err != nil {
 		return err
 	}
@@ -124,12 +137,13 @@ func NewWorker(confirms uint64, url string) error {
 	EWorker = &Worker{
 		confirms:               confirms,
 		http:                   http,
+		wClient:                rpcClient,
 		tokenTransferEventHash: tokenTransferEventHash,
 		tokenAbi:               tokenAbi,
 		pending:                &sync.Map{},
 		//TransHistory:           make(map[string][]*types.Transaction),
 	}
-	// EWorker.wClient = rpc.NewServer()
+	//EWorker.wClient = ethclient.NewClient(rpcClient)
 	return nil
 }
 func (w *Worker) GetNowBlockNum() (uint64, error) {
@@ -263,6 +277,7 @@ func (w *Worker) Transfer(privateKeyStr string, toAddress string, value *big.Int
 	var toAddressTmp common.Address
 	var toAddressHex *common.Address
 
+	// 可以和 CallContract 合并
 	if contractAddress != "" {
 
 		contractTransferHashSig = []byte("transfer(address,uint256)")
@@ -763,7 +778,7 @@ func (w *Worker) MulSignMode(to, coinName, num, timeStamp string) (int32, string
 	return 0, ""
 }
 
-func (w *Worker) PersinalSign(message []byte, privateStr string) ([]byte, error) {
+func (w *Worker) PersonalSign(message []byte, privateStr string) ([]byte, error) {
 
 	privateKey, err := crypto.HexToECDSA(privateStr)
 	if err != nil {
@@ -772,12 +787,13 @@ func (w *Worker) PersinalSign(message []byte, privateStr string) ([]byte, error)
 	}
 	// 是否要预 Hash
 	data := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(message), message)
-
+	//
 	msg := crypto.Keccak256Hash([]byte(data))
+	// 传过来的数据 以及是 加头和 hash 后的 直接签名就好
 	signer, err := crypto.Sign(msg.Bytes(), privateKey)
 
 	if err != nil {
-		log.Error().Msgf("PersinalSign error %s", err.Error())
+		log.Error().Msgf("PersonalSign error %s", err.Error())
 		return nil, err
 	}
 	signer[64] += 27
@@ -808,42 +824,18 @@ func (w *Worker) SignDataV4(data types.TypedData, privateStr string) (string, st
 	return from.Hex(), sigData, nil
 }
 
-func (w *Worker) GetTransactionByHash(hash string) (*rpcTransaction, error) {
-	// w.http.
-	jsonData := &rpcTransaction{}
-	// err := w.wClient.CallContext(context.Background(), jsonData, "eth_getTransactionByHash", common.HexToHash(hash))
-	// if err != nil {
-	// 	log.Error().Msgf("GetTransactionByHash error %s", err.Error())
-	// 	return nil, err
-	// }
-
-	trans, isPending, err := w.http.TransactionByHash(context.Background(), common.HexToHash(hash))
+func (w *Worker) GetTransactionByHash(hash string) (*RpcTransaction, error) {
+	var jsonData *RpcTransaction
+	//w.http.TransactionByHash()
+	err := w.wClient.CallContext(context.Background(), &jsonData, "eth_getTransactionByHash", common.HexToHash(hash))
 	if err != nil {
-		log.Error().Msgf("TransactionByHash error %s hash is %s ", err.Error(), hash)
+		log.Error().Msgf("GetTransactionByHash error %s", err.Error())
 		return nil, err
 	}
-	if isPending {
-		log.Info().Msgf("TransactionByHash %s is pending", hash)
-	}
-	receipt, err := w.http.TransactionReceipt(context.Background(), common.HexToHash(hash))
-	if err != nil {
-		log.Error().Msgf("TransactionReceipt error %s", err.Error())
-		// return nil, err
-	} else {
-		from, err := w.http.TransactionSender(context.Background(), trans, receipt.BlockHash, receipt.TransactionIndex)
-		if err != nil {
-			log.Error().Msgf("TransactionSender error %s", err.Error())
-		} else {
-			jsonData.From = from
-		}
-		// 查询 blockNumber
-		jsonData.BlockNumber = receipt.BlockNumber.String()
-		// BlockHash
-		jsonData.BlockHash = receipt.BlockHash
-
-	}
-	jsonData.Tx = trans
 	log.Info().Msgf("GetTransactionByHash Res %v ", jsonData)
+	if jsonData.BlockHash == nil {
+		log.Info().Msgf("GetTransactionByHash Hash is %s is Pending", hash)
+	}
 	return jsonData, nil
 }
 
@@ -871,6 +863,8 @@ func (w *Worker) ETHCall(from, to string, data []byte) ([]byte, error) {
 		log.Error().Msgf("BlockNumber error %s", err.Error())
 		return nil, err
 	}
+	// TODO 应该使用这种方法
+	//w.wClient.CallContext()
 	//  最新的区块
 	res, err := w.http.CallContract(context.Background(), ethereum.CallMsg{
 		From: fromHex,
@@ -882,6 +876,24 @@ func (w *Worker) ETHCall(from, to string, data []byte) ([]byte, error) {
 		return nil, err
 	}
 	return res, nil
+}
+
+func (w *Worker) GetBlockByNumber(number *big.Int, isFull bool) (interface{}, error) {
+	if isFull {
+		block, err := w.http.BlockByNumber(context.Background(), number)
+		if err != nil {
+			log.Error().Msgf("BlockByNumber error %s", err.Error())
+			return nil, err
+		}
+		return block, nil
+	}
+	block, err := w.http.HeaderByNumber(context.Background(), number)
+	if err != nil {
+		log.Error().Msgf("HeaderByNumber error %s", err.Error())
+		return nil, err
+	}
+
+	return block, nil
 }
 
 func (w *Worker) CallContext() {

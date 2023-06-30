@@ -286,7 +286,12 @@ func EstimateGas(c *gin.Context) {
 		return
 	}
 	val := new(big.Int)
-	val.SetString(cr.Value, 16)
+	_, ok := val.SetString(cr.Value[2:], 16)
+	if !ok {
+		log.Error().Msgf("big.Int.SetString is false")
+		//APIResponse(c, , nil)
+		return
+	}
 	data, err := hexutil.Decode(cr.Data)
 	if err != nil {
 		log.Error().Msgf("hexutil.Decode err: %s", err.Error())
@@ -401,7 +406,9 @@ func GetWalletInfo(c *gin.Context) {
 		User  *db.User
 		Trans []*db.Transfer
 	}
-	info := &walletInfo{}
+	info := &walletInfo{
+		Trans: []*db.Transfer{},
+	}
 	address, ok := c.GetQuery("Address")
 	if !ok {
 		APIResponse(c, ErrNoAddress, nil)
@@ -410,6 +417,7 @@ func GetWalletInfo(c *gin.Context) {
 
 	usr := db.GetUserFromDB(address)
 	info.User = usr
+	//trans :=db.GetTransferFromDB(address)
 	info.Trans = append(info.Trans, db.GetTransferFromDB(address)...)
 
 	log.Info().Msgf("GetWalletInfo info is %v ", usr)
@@ -705,30 +713,32 @@ func Cancel(c *gin.Context) {
 
 }
 
-func PersinalSign(c *gin.Context) {
+func PersonalSign(c *gin.Context) {
 	var ps types.PersinalSignature
 	var res SendTransactionRes
 	if err := c.ShouldBindJSON(&ps); err != nil {
-		log.Error().Msgf("PersinalSign err is %s ", err.Error())
+		log.Error().Msgf("PersonalSign err is %s ", err.Error())
 		APIResponse(c, err, nil)
 		return
 	}
-	usr := db.GetUserFromDB(ps.From)
+	fromHex := common.HexToAddress(ps.From)
+	//log.Info().Msgf("PersonalSign fromHex is %s ", fromHex.Hex())
+	usr := db.GetUserFromDB(fromHex.Hex())
 	if usr == nil {
-		log.Info().Msgf("PersinalSign get User is nil,address is %s ", ps.From)
+		log.Info().Msgf("PersonalSign get User is nil,address is %s ", ps.From)
 		APIResponse(c, ErrWalletNotInDB, nil)
 		return
 	}
 	// 传过来的数据是什么格式
 	data, err := hexutil.Decode(ps.Message)
 	if err != nil {
-		log.Info().Msgf("PersinalSign Decode err is %s ", err.Error())
+		log.Info().Msgf("PersonalSign Decode err is %s ", err.Error())
 		APIResponse(c, err, nil)
 		return
 	}
-	sign, err := engine.EWorker.PersinalSign(data, usr.PrivateKey)
+	sign, err := engine.EWorker.PersonalSign(data, usr.PrivateKey)
 	if err != nil {
-		log.Info().Msgf("PersinalSign Sign error is %s", err.Error())
+		log.Info().Msgf("PersonalSign Sign error is %s", err.Error())
 		APIResponse(c, err, nil)
 		return
 	}
@@ -749,6 +759,11 @@ func SignTypeDataV4(c *gin.Context) {
 
 	log.Info().Msgf("SignTypeDataV4 offer is %s ", sr.Message["offerer"].(string))
 	usr := db.GetUserFromDB(sr.Message["offerer"].(string))
+	if usr == nil {
+		log.Info().Msgf("SignTypeDataV4 get User is nil,address is %s ", sr.Message["offerer"].(string))
+		APIResponse(c, ErrWalletNotInDB, nil)
+		return
+	}
 	from, s, err := engine.EWorker.SignDataV4(sr.TypedData, usr.PrivateKey)
 	if err != nil {
 		log.Info().Msgf("SignTypeDataV4 err is %s ", err.Error())
@@ -847,6 +862,7 @@ func GetGasPrice(c *gin.Context) {
 	// 选择 不同的链
 	suggestPrice, basePrice, err := engine.EWorker.GetGasPrice()
 	if err != nil {
+		log.Error().Msgf("GetGasPrice err is %s ", err.Error())
 		HandleValidatorError(c, err)
 		return
 	}
@@ -875,4 +891,23 @@ func ETHCall(c *gin.Context) {
 		return
 	}
 	APIResponse(c, nil, hexutil.Encode(res))
+}
+
+func GetBlockByNumber(c *gin.Context) {
+	var bR GetBlockByNumberReq
+	if err := c.ShouldBindJSON(&bR); err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	// val := new(big.Int)
+	// res,ok :=val.SetString(bR.Number[2:], 16)
+	// if !ok {
+
+	// }
+	block, err := engine.EWorker.GetBlockByNumber(nil, bR.IsFull)
+	if err != nil {
+		HandleValidatorError(c, err)
+		return
+	}
+	APIResponse(c, nil, block)
 }
